@@ -1,0 +1,43 @@
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
+
+provider "aws" {
+    region = var.aws_region
+}
+
+# Networking VPC's and subnets
+module "network" {
+  source = "./modules/networking"
+  project_name = var.project_name
+  vpc_cidr = var.vpc_cidr
+}
+module "cognito" {
+  source = "./modules/auth"
+  
+  project_name       = var.project_name
+  domain_prefix      = var.cognito_domain_prefix
+  callback_urls      = var.callback_urls
+  logout_urls        = var.logout_urls
+  google_client_id   = var.google_client_id
+  google_client_secret = var.google_client_secret
+  linkedin_client_id = var.linkedin_client_id
+  linkedin_client_secret = var.linkedin_client_secret
+}
+
+# Cloudtrail and logging Setup 
+module "monitoring" {
+  source = "./modules/audit"
+  
+  project_name = var.project_name
+  s3_bucket_name = "${var.project_name}-cloudtrail-logs"
+}
+
+module "api" {
+  source = "./modules/api"
+  
+  project_name              = var.project_name
+  environment               = var.environment
+  cognito_user_pool_id      = module.cognito.user_pool_id
+  cognito_user_pool_client_id = module.cognito.user_pool_client_id
+  cors_origins              = var.cors_origins
+}
