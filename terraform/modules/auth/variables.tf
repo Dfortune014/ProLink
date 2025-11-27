@@ -23,3 +23,15 @@ variable "linkedin_client_secret" {
   default   = ""
   sensitive = true
 }
+
+variable "post_confirmation_lambda_arn" {
+  description = "ARN of the Post-Confirmation Lambda function"
+  type        = string
+  default     = ""
+}
+
+variable "pre_signup_lambda_arn" {
+  description = "ARN of the Pre-SignUp Lambda function"
+  type        = string
+  default     = ""
+}

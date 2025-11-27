@@ -22,3 +22,13 @@ output "users_table_name" {
   description = "DynamoDB Users table name"
   value       = aws_dynamodb_table.users.name
 }
+
+output "post_confirmation_lambda_arn" {
+  description = "Post-Confirmation Lambda function ARN"
+  value       = aws_lambda_function.post_confirmation.arn
+}
+
+output "pre_signup_lambda_arn" {
+  description = "Pre-SignUp Lambda function ARN"
+  value       = aws_lambda_function.pre_signup.arn
+}

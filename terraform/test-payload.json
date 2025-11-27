@@ -1,0 +1,1 @@
+﻿{"version":"1","region":"us-east-1","userPoolId":"us-east-1_Iej839FW0","userName":"test@example.com","triggerSource":"PostConfirmation_ConfirmSignUp","request":{"userAttributes":{"sub":"test-123","email":"test@example.com","email_verified":"true"}},"response":{}}

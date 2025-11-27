@@ -12,15 +12,23 @@ variable "environment" {
 variable "cognito_user_pool_id" {
   description = "Cognito User Pool ID for JWT authorizer"
   type        = string
+  default     = ""
 }
 
 variable "cognito_user_pool_client_id" {
   description = "Cognito User Pool Client ID for JWT authorizer"
   type        = string
+  default     = ""
 }
 
 variable "cors_origins" {
   description = "Allowed CORS origins"
   type        = list(string)
   default     = ["*"]
+}
+
+variable "cognito_user_pool_arn" {
+  description = "ARN of the Cognito User Pool"
+  type        = string
+  default     = ""
 }

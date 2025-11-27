@@ -22,14 +22,8 @@ module "cognito" {
   google_client_secret = var.google_client_secret
   linkedin_client_id = var.linkedin_client_id
   linkedin_client_secret = var.linkedin_client_secret
-}
-
-# Cloudtrail and logging Setup 
-module "monitoring" {
-  source = "./modules/audit"
-  
-  project_name = var.project_name
-  s3_bucket_name = "${var.project_name}-cloudtrail-logs"
+  post_confirmation_lambda_arn = module.api.post_confirmation_lambda_arn
+  pre_signup_lambda_arn = module.api.pre_signup_lambda_arn
 }
 
 module "api" {
@@ -39,5 +33,14 @@ module "api" {
   environment               = var.environment
   cognito_user_pool_id      = module.cognito.user_pool_id
   cognito_user_pool_client_id = module.cognito.user_pool_client_id
+  cognito_user_pool_arn     = module.cognito.user_pool_arn
   cors_origins              = var.cors_origins
+}
+
+# Cloudtrail and logging Setup 
+module "monitoring" {
+  source = "./modules/audit"
+  
+  project_name = var.project_name
+  s3_bucket_name = "${var.project_name}-cloudtrail-logs"
 }

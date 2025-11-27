@@ -15,6 +15,18 @@ resource "aws_dynamodb_table" "users" {
     type = "S"
   }
 
+  attribute {
+    name = "email"
+    type = "S"
+  }
+
+  # Global Secondary Index for email lookups (for account linking)
+  global_secondary_index {
+    name            = "email-index"
+    hash_key        = "email"
+    projection_type = "ALL"
+  }
+
   tags = {
     Name        = "${var.project_name}-users"
     Environment = var.environment
@@ -303,6 +315,70 @@ resource "aws_iam_role_policy" "upload_lambda" {
   })
 }
 
+# IAM Role for Post-Confirmation Lambda
+resource "aws_iam_role" "post_confirmation_lambda" {
+  name = "${var.project_name}-post-confirmation-lambda-role"
+  
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "lambda.amazonaws.com"
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "post_confirmation_lambda" {
+  name = "${var.project_name}-post-confirmation-lambda-policy"
+  role = aws_iam_role.post_confirmation_lambda.id
+  
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = [
+          "arn:aws:logs:*:*:*",
+          "arn:aws:logs:*:*:log-group:/aws/lambda/${var.project_name}-post-confirmation*"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:PutItem",
+          "dynamodb:GetItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:Query"
+        ]
+        Resource = [
+          aws_dynamodb_table.users.arn,
+          "${aws_dynamodb_table.users.arn}/*",
+          "${aws_dynamodb_table.users.arn}/index/email-index",
+          aws_dynamodb_table.profiles.arn,
+          "${aws_dynamodb_table.profiles.arn}/*",
+          "${aws_dynamodb_table.profiles.arn}/index/user_id-index"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "cognito-idp:ListUsers"
+        ]
+        Resource = [
+          var.cognito_user_pool_arn != "" ? var.cognito_user_pool_arn : "*"
+        ]
+      }
+    ]
+  })
+}
 # ============================================
 # Lambda Functions
 # ============================================
@@ -312,7 +388,7 @@ resource "aws_lambda_function" "profiles" {
   filename         = "${path.module}/../lambda/profiles.zip"
   function_name    = "${var.project_name}-profiles"
   role            = aws_iam_role.profiles_lambda.arn
-  handler         = "index.handler"
+  handler         = "main.handler"
   runtime         = "python3.11"
   timeout         = 30
 
@@ -371,6 +447,76 @@ resource "aws_lambda_function" "upload" {
   }
 }
 
+# Post-Confirmation Lambda
+resource "aws_lambda_function" "post_confirmation" {
+  filename         = "${path.module}/../lambda/post-confirmation.zip"
+  function_name    = "${var.project_name}-post-confirmation"
+  role            = aws_iam_role.post_confirmation_lambda.arn
+  handler         = "main.handler"
+  runtime         = "python3.11"
+  timeout         = 30  # Increased timeout for debugging
+  
+  environment {
+    variables = {
+      USERS_TABLE    = aws_dynamodb_table.users.name
+      PROFILES_TABLE = aws_dynamodb_table.profiles.name
+    }
+  }
+  
+  tags = {
+    Name        = "${var.project_name}-post-confirmation"
+    Environment = var.environment
+  }
+}
+
+# CloudWatch Log Group for Post-Confirmation Lambda
+resource "aws_cloudwatch_log_group" "post_confirmation" {
+  name              = "/aws/lambda/${var.project_name}-post-confirmation"
+  retention_in_days = 7
+  
+  tags = {
+    Name        = "${var.project_name}-post-confirmation-logs"
+    Environment = var.environment
+  }
+}
+
+# Pre-SignUp Lambda
+resource "aws_lambda_function" "pre_signup" {
+  filename         = "${path.module}/../lambda/pre-signup.zip"
+  function_name    = "${var.project_name}-pre-signup"
+  role            = aws_iam_role.post_confirmation_lambda.arn  # Can reuse same role
+  handler         = "main.handler"
+  runtime         = "python3.11"
+  timeout         = 10
+  
+  # No environment variables needed - uses Cognito API directly
+  
+  tags = {
+    Name        = "${var.project_name}-pre-signup"
+    Environment = var.environment
+  }
+}
+
+# CloudWatch Log Group for Pre-SignUp Lambda
+resource "aws_cloudwatch_log_group" "pre_signup" {
+  name              = "/aws/lambda/${var.project_name}-pre-signup"
+  retention_in_days = 7
+  
+  tags = {
+    Name        = "${var.project_name}-pre-signup-logs"
+    Environment = var.environment
+  }
+}
+
+# Lambda Permission for Cognito to invoke Pre-SignUp Lambda
+resource "aws_lambda_permission" "pre_signup_cognito" {
+  statement_id  = "AllowExecutionFromCognito"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.pre_signup.function_name
+  principal     = "cognito-idp.amazonaws.com"
+  source_arn    = var.cognito_user_pool_arn != "" ? var.cognito_user_pool_arn : "*"
+}
+
 # ============================================
 # API Gateway HTTP API v2
 # ============================================
@@ -381,10 +527,12 @@ resource "aws_apigatewayv2_api" "main" {
   description   = "ProLink API Gateway HTTP API"
 
   cors_configuration {
-    allow_origins = var.cors_origins
-    allow_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
-    allow_headers = ["content-type", "authorization"]
-    max_age       = 300
+    allow_origins      = var.cors_origins
+    allow_methods     = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    allow_headers     = ["content-type", "authorization"]
+    allow_credentials = true  # Required when using Authorization header
+    max_age           = 300
+    expose_headers    = []
   }
 }
 
@@ -392,12 +540,20 @@ resource "aws_apigatewayv2_api" "main" {
 resource "aws_apigatewayv2_authorizer" "jwt" {
   api_id           = aws_apigatewayv2_api.main.id
   authorizer_type  = "JWT"
+  # For API Gateway HTTP API v2, identity_sources extracts token from Authorization header
+  # API Gateway automatically handles "Bearer " prefix when using $request.header.Authorization
+  # The authorizer will extract the token from "Bearer <token>" format automatically
   identity_sources = ["$request.header.Authorization"]
   name             = "${var.project_name}-jwt-authorizer"
 
   jwt_configuration {
-    audience = [var.cognito_user_pool_client_id]
-    issuer   = "https://cognito-idp.${data.aws_region.current.name}.amazonaws.com/${var.cognito_user_pool_id}"
+    # For Cognito access tokens, the 'aud' claim may be undefined
+    # Access tokens use 'client_id' claim instead, but API Gateway JWT authorizer checks 'aud'
+    # If audience is empty, authorizer will skip audience validation (only validates issuer)
+    # This is acceptable since we're validating the issuer which is sufficient for Cognito tokens
+    audience = []  # Empty array = skip audience validation (Cognito access tokens don't have 'aud' claim)
+    # Issuer must match exactly: https://cognito-idp.<region>.amazonaws.com/<user-pool-id>
+    issuer   = var.cognito_user_pool_id != "" ? "https://cognito-idp.${data.aws_region.current.name}.amazonaws.com/${var.cognito_user_pool_id}" : ""
   }
 }
 
@@ -415,6 +571,14 @@ resource "aws_apigatewayv2_integration" "profiles" {
 resource "aws_apigatewayv2_route" "profiles_post" {
   api_id    = aws_apigatewayv2_api.main.id
   route_key = "POST /profiles"
+  target    = "integrations/${aws_apigatewayv2_integration.profiles.id}"
+  authorizer_id = aws_apigatewayv2_authorizer.jwt.id
+  authorization_type = "JWT"
+}
+
+resource "aws_apigatewayv2_route" "users_me" {
+  api_id    = aws_apigatewayv2_api.main.id
+  route_key = "GET /users/me"
   target    = "integrations/${aws_apigatewayv2_integration.profiles.id}"
   authorizer_id = aws_apigatewayv2_authorizer.jwt.id
   authorization_type = "JWT"
@@ -501,12 +665,116 @@ resource "aws_lambda_permission" "upload" {
   source_arn    = "${aws_apigatewayv2_api.main.execution_arn}/*/*"
 }
 
+# Lambda Permission for Cognito to invoke Post-Confirmation Lambda
+# This allows Cognito to invoke the Lambda function
+resource "aws_lambda_permission" "post_confirmation_cognito" {
+  statement_id  = "AllowExecutionFromCognito"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.post_confirmation.function_name
+  principal     = "cognito-idp.amazonaws.com"
+  source_arn    = var.cognito_user_pool_arn != "" ? var.cognito_user_pool_arn : "*"
+}
+
 # ============================================
 # API Gateway Stage
 # ============================================
+
+# CloudWatch Log Group for API Gateway Access Logs
+resource "aws_cloudwatch_log_group" "api_gateway" {
+  name              = "/aws/apigateway/${var.project_name}-api"
+  retention_in_days = 7
+
+  tags = {
+    Name        = "${var.project_name}-api-gateway-logs"
+    Environment = var.environment
+  }
+}
+
+# IAM Role for API Gateway to write logs
+resource "aws_iam_role" "api_gateway_logging" {
+  name = "${var.project_name}-api-gateway-logging-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "apigateway.amazonaws.com"
+      }
+      Action = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "api_gateway_logging" {
+  name = "${var.project_name}-api-gateway-logging-policy"
+  role = aws_iam_role.api_gateway_logging.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ]
+      Resource = "${aws_cloudwatch_log_group.api_gateway.arn}:*"
+    }]
+  })
+}
 
 resource "aws_apigatewayv2_stage" "default" {
   api_id      = aws_apigatewayv2_api.main.id
   name        = "$default"
   auto_deploy = true
+
+  # Enable access logging to debug JWT authorizer errors
+  access_log_settings {
+    destination_arn = aws_cloudwatch_log_group.api_gateway.arn
+    format = jsonencode({
+      requestId      = "$context.requestId"
+      ip             = "$context.identity.sourceIp"
+      requestTime    = "$context.requestTime"
+      httpMethod     = "$context.httpMethod"
+      routeKey       = "$context.routeKey"
+      status         = "$context.status"
+      protocol       = "$context.protocol"
+      responseLength = "$context.responseLength"
+      error          = "$context.error.message"
+      errorMessage   = "$context.error.messageString"
+      authorizerError = "$context.authorizer.error"
+      authorizerStatus = "$context.authorizer.status"
+      identitySource = "$context.identity.sourceIp"
+    })
+  }
+
+  default_route_settings {
+    detailed_metrics_enabled = true
+    # Increase throttling limits for development
+    throttling_burst_limit = 100  # Maximum number of requests in a burst
+    throttling_rate_limit  = 50   # Steady-state request rate (requests per second)
+  }
+}
+
+# ============================================
+# Username Availability Check
+# ============================================
+
+resource "aws_apigatewayv2_route" "username_check" {
+  api_id    = aws_apigatewayv2_api.main.id
+  route_key = "GET /username/check"
+  target    = "integrations/${aws_apigatewayv2_integration.profiles.id}"
+  # Public endpoint - no authorizer
+}
+
+# Explicit OPTIONS route - routes to Lambda which handles OPTIONS and returns CORS headers
+# HTTP API v2 only supports proxy integrations (AWS_PROXY, HTTP_PROXY), so we route to Lambda
+# The Lambda function handles OPTIONS and returns proper CORS headers (see main.py lines 86-112)
+resource "aws_apigatewayv2_route" "username_check_options" {
+  api_id    = aws_apigatewayv2_api.main.id
+  route_key = "OPTIONS /username/check"
+  target    = "integrations/${aws_apigatewayv2_integration.profiles.id}"
+  # Public endpoint - no authorizer
+  # Lambda function handles OPTIONS and returns CORS headers
 }

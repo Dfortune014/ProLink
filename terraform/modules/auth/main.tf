@@ -21,11 +21,51 @@ resource "aws_cognito_user_pool" "main" {
     required            = true
     mutable             = true
   }
+  
+  schema {
+    name                = "fullname"
+    attribute_data_type = "String"
+    required            = false  # Cognito doesn't support required custom attributes
+    mutable             = true
+  }
+
+  schema {
+    name                = "date_of_birth"
+    attribute_data_type = "String"
+    required            = false
+    mutable             = true
+  }
+
+  schema {
+    name                = "username"
+    attribute_data_type = "String"
+    required            = false  # Cognito doesn't support required custom attributes
+    mutable             = false
+  }
+
+  schema {
+    name                = "picture"
+    attribute_data_type = "String"
+    required            = false
+    mutable             = true
+  }
+
+  # Ignore schema changes - AWS Cognito doesn't allow modifying schema after creation
+  lifecycle {
+    ignore_changes = [schema]
+  }
 
   account_recovery_setting {
     recovery_mechanism {
       name     = "verified_email"
       priority = 1
+    }
+  }
+  dynamic "lambda_config" {
+    for_each = var.post_confirmation_lambda_arn != "" || var.pre_signup_lambda_arn != "" ? [1] : []
+    content {
+      post_confirmation = var.post_confirmation_lambda_arn != "" ? var.post_confirmation_lambda_arn : ""
+      pre_sign_up       = var.pre_signup_lambda_arn != "" ? var.pre_signup_lambda_arn : ""
     }
   }
 }
@@ -54,6 +94,12 @@ resource "aws_cognito_user_pool_client" "main" {
   allowed_oauth_flows          = ["code", "implicit"]
   allowed_oauth_scopes         = ["email", "openid", "profile"]
   allowed_oauth_flows_user_pool_client = true
+
+  # Ensure identity providers are created before the client
+  depends_on = [
+    aws_cognito_identity_provider.google,
+    aws_cognito_identity_provider.linkedin
+  ]
 }
 
 # Cognito User Pool Domain
@@ -78,6 +124,10 @@ resource "aws_cognito_identity_provider" "google" {
   attribute_mapping = {
     email    = "email"
     username = "sub"
+    name     = "name"
+    picture  = "picture"
+    given_name  = "given_name"
+    family_name = "family_name"
   }
 }
 
@@ -91,16 +141,22 @@ resource "aws_cognito_identity_provider" "linkedin" {
     client_id                      = var.linkedin_client_id
     client_secret                  = var.linkedin_client_secret
     authorize_scopes               = "openid profile email"
-    oidc_issuer                    = "https://www.linkedin.com"
+    # Use OIDC issuer - Cognito will auto-discover JWKS from discovery endpoint
+    oidc_issuer                    = "https://www.linkedin.com/oauth"
     authorize_url                  = "https://www.linkedin.com/oauth/v2/authorization"
     token_url                      = "https://www.linkedin.com/oauth/v2/accessToken"
     attributes_url                 = "https://api.linkedin.com/v2/userinfo"
-    jwks_uri                       = "https://www.linkedin.com/oauth/.well-known/jwks"
+    attributes_request_method      = "GET"
+    # Don't specify jwks_uri - let Cognito discover it from oidc_issuer
   }
 
   attribute_mapping = {
     email    = "email"
     username = "sub"
+    name     = "name"
+    picture  = "picture"
+    given_name  = "given_name"
+    family_name = "family_name"
   }
 }
 

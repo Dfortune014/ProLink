@@ -68,5 +68,5 @@ variable "environment" {
 variable "cors_origins" {
   description = "Allowed CORS origins for API Gateway"
   type        = list(string)
-  default     = ["http://localhost:3000"]
+  default     = ["http://localhost:3000", "http://localhost:8080"]
 }
