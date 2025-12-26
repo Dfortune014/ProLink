@@ -3,11 +3,9 @@ import os
 import boto3
 import uuid
 from datetime import datetime, timedelta
-from botocore.exceptions import ClientError, ParamValidationError
-from botocore.client import Config
+from botocore.exceptions import ClientError
 
-# Use Signature Version 4 (required for KMS-encrypted buckets)
-s3_client = boto3.client('s3', config=Config(signature_version='s3v4'))
+s3_client = boto3.client('s3')
 bucket_name = os.environ['S3_BUCKET']
 
 # Allowed MIME types
@@ -66,65 +64,61 @@ def get_user_id_from_event(event):
         return None
 
 def handler(event, context):
-    # Default CORS headers in case of early error
-    default_cors_headers = get_cors_headers()
+    # Debug: Log the event structure
+    print("=" * 80)
+    print("UPLOAD LAMBDA INVOCATION START")
+    print("=" * 80)
+    print(f"Event keys: {list(event.keys())}")
+    print(f"Event: {json.dumps(event, default=str)}")
+    
+    # Get origin from request headers for CORS
+    request_headers = event.get('headers', {}) or {}
+    origin = request_headers.get('origin') or request_headers.get('Origin') or None
+    print(f"DEBUG: Origin: {origin}")
+    
+    # Get CORS headers
+    cors_headers = get_cors_headers(origin)
+    
+    # Try API Gateway HTTP API v2 format first
+    request_context = event.get('requestContext', {})
+    http_context = request_context.get('http', {})
+    http_method = http_context.get('method')
+    
+    # Fallback to API Gateway v1 format
+    if not http_method:
+        http_method = request_context.get('httpMethod')
+    
+    print(f"DEBUG: HTTP method: {http_method}")
+    
+    # Handle OPTIONS (CORS preflight)
+    if http_method == 'OPTIONS':
+        print("DEBUG: Handling OPTIONS request")
+        return {
+            'statusCode': 200,
+            'headers': cors_headers,
+            'body': ''
+        }
+    
+    if http_method != 'POST':
+        print(f"DEBUG: Method not allowed: {http_method}")
+        return {
+            'statusCode': 405,
+            'headers': cors_headers,
+            'body': json.dumps({'error': 'Method not allowed'})
+        }
     
     try:
-        # Debug: Log the event structure
-        print("=" * 80)
-        print("UPLOAD LAMBDA INVOCATION START")
-        print("=" * 80)
-        print(f"Event keys: {list(event.keys())}")
-        print(f"Event: {json.dumps(event, default=str)}")
-        
-        # Get origin from request headers for CORS
-        request_headers = event.get('headers', {}) or {}
-        origin = request_headers.get('origin') or request_headers.get('Origin') or None
-        print(f"DEBUG: Origin: {origin}")
-        
-        # Get CORS headers
-        cors_headers = get_cors_headers(origin)
-        
-        # Try API Gateway HTTP API v2 format first
-        request_context = event.get('requestContext', {})
-        http_context = request_context.get('http', {})
-        http_method = http_context.get('method')
-        
-        # Fallback to API Gateway v1 format
-        if not http_method:
-            http_method = request_context.get('httpMethod')
-        
-        print(f"DEBUG: HTTP method: {http_method}")
-        
-        # Handle OPTIONS (CORS preflight)
-        if http_method == 'OPTIONS':
-            print("DEBUG: Handling OPTIONS request")
-            return {
-                'statusCode': 200,
-                'headers': cors_headers,
-                'body': ''
-            }
-        
-        if http_method != 'POST':
-            print(f"DEBUG: Method not allowed: {http_method}")
-            return {
-                'statusCode': 405,
-                'headers': cors_headers,
-                'body': json.dumps({'error': 'Method not allowed'})
-            }
-        
         return generate_presigned_url(event, cors_headers)
     except Exception as e:
         import traceback
         error_trace = traceback.format_exc()
-        error_type = type(e).__name__
-        print(f"ERROR in upload handler: {error_type}: {str(e)}")
+        print(f"ERROR in upload handler: {str(e)}")
         print(f"Traceback: {error_trace}")
         print("=" * 80)
         return {
             'statusCode': 500,
-            'headers': default_cors_headers,
-            'body': json.dumps({'error': 'Internal server error', 'message': str(e), 'type': error_type})
+            'headers': cors_headers,
+            'body': json.dumps({'error': 'Internal server error', 'message': str(e)})
         }
 
 def generate_presigned_url(event, cors_headers=None):
@@ -196,16 +190,6 @@ def generate_presigned_url(event, cors_headers=None):
         if content_type == 'image/jpg':
             content_type = 'image/jpeg'  # Standardize jpg to jpeg
         prefix = f"users/{user_id}/profile/"
-    elif file_type == 'project_image':
-        if content_type not in normalized_allowed_images:
-            return {
-                'statusCode': 400,
-                'headers': cors_headers,
-                'body': json.dumps({'error': f'Invalid content type. Allowed: {ALLOWED_IMAGE_TYPES}'})
-            }
-        if content_type == 'image/jpg':
-            content_type = 'image/jpeg'
-        prefix = f"users/{user_id}/projects/"
     elif file_type == 'resume':
         if content_type not in normalized_allowed_resumes:
             return {
@@ -218,7 +202,7 @@ def generate_presigned_url(event, cors_headers=None):
         return {
             'statusCode': 400,
             'headers': cors_headers,
-            'body': json.dumps({'error': 'Invalid file_type. Must be "profile_image", "project_image", or "resume"'})
+            'body': json.dumps({'error': 'Invalid file_type. Must be "profile_image" or "resume"'})
         }
     
     # Generate unique filename
@@ -229,10 +213,6 @@ def generate_presigned_url(event, cors_headers=None):
     # IMPORTANT: Include ContentType in Params so it's part of the signature
     # If Content-Type is sent in the request but not in the signature, S3 will reject it
     try:
-        print(f"DEBUG: About to generate presigned URL with ContentType: {content_type}")
-        # s3_client is already configured with Signature Version 4
-        # Note: With BucketOwnerPreferred, we rely on bucket policy for public access
-        # No encryption configured - ensures maximum compatibility for public file access (images and resumes)
         presigned_url = s3_client.generate_presigned_url(
             'put_object',
             Params={
@@ -244,37 +224,20 @@ def generate_presigned_url(event, cors_headers=None):
             HttpMethod='PUT'
         )
         
-        print(f"DEBUG: Successfully generated presigned URL")
-        # Generate public URL for images and resumes (all are public)
-        public_url = f"https://{bucket_name}.s3.amazonaws.com/{key}" if file_type in ['profile_image', 'project_image', 'resume'] else None
+        public_url = f"https://{bucket_name}.s3.amazonaws.com/{key}" if file_type == 'profile_image' else None
         
         print(f"DEBUG: Generated presigned URL for key: {key}")
         print(f"DEBUG: Content-Type in signature: {content_type}")
         
-        response_body = {
-            'upload_url': presigned_url,
-            'key': key,
-            'url': public_url,
-            'content_type': content_type  # Return the Content-Type that was included in the signature
-        }
-        
-        response = {
+        return {
             'statusCode': 200,
             'headers': cors_headers,
-            'body': json.dumps(response_body)
-        }
-        
-        print(f"DEBUG: Returning response: statusCode={response['statusCode']}, headers={list(response['headers'].keys())}, body_length={len(response['body'])}")
-        
-        return response
-    except ParamValidationError as e:
-        import traceback
-        print(f"ERROR: Parameter validation error: {str(e)}")
-        print(f"Traceback: {traceback.format_exc()}")
-        return {
-            'statusCode': 500,
-            'headers': cors_headers,
-            'body': json.dumps({'error': 'Parameter validation error', 'message': str(e)})
+            'body': json.dumps({
+                'upload_url': presigned_url,
+                'key': key,
+                'url': public_url,
+                'content_type': content_type  # Return the Content-Type that was included in the signature
+            })
         }
     except ClientError as e:
         import traceback
@@ -288,10 +251,9 @@ def generate_presigned_url(event, cors_headers=None):
     except Exception as e:
         import traceback
         print(f"ERROR: Unexpected error: {str(e)}")
-        print(f"Error type: {type(e).__name__}")
         print(f"Traceback: {traceback.format_exc()}")
         return {
             'statusCode': 500,
             'headers': cors_headers,
-            'body': json.dumps({'error': 'Internal server error', 'message': str(e), 'type': type(e).__name__})
+            'body': json.dumps({'error': 'Internal server error', 'message': str(e)})
         }

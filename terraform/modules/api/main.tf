@@ -103,16 +103,16 @@ resource "aws_s3_bucket_versioning" "assets" {
   }
 }
 
-resource "aws_s3_bucket_server_side_encryption_configuration" "assets" {
+# Bucket ownership controls - Allow public access via bucket policy
+resource "aws_s3_bucket_ownership_controls" "assets" {
   bucket = aws_s3_bucket.assets.id
 
   rule {
-    apply_server_side_encryption_by_default {
-      sse_algorithm = "aws:kms"
-    }
-    bucket_key_enabled = true
+    object_ownership = "BucketOwnerPreferred"
   }
 }
+
+# Encryption removed - No encryption to ensure maximum compatibility for public file access (images and resumes)
 
 resource "aws_s3_bucket_public_access_block" "assets" {
   bucket = aws_s3_bucket.assets.id
@@ -123,9 +123,15 @@ resource "aws_s3_bucket_public_access_block" "assets" {
   restrict_public_buckets = false
 }
 
-# Bucket Policy: Public read for profile images, private for everything else
+# Bucket Policy: Public read for profile and project images, private for everything else
+# Depends on public access block to ensure public access is allowed first
 resource "aws_s3_bucket_policy" "assets" {
   bucket = aws_s3_bucket.assets.id
+  
+  depends_on = [
+    aws_s3_bucket_public_access_block.assets,
+    aws_s3_bucket_ownership_controls.assets
+  ]
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -136,6 +142,20 @@ resource "aws_s3_bucket_policy" "assets" {
         Principal = "*"
         Action   = "s3:GetObject"
         Resource = "${aws_s3_bucket.assets.arn}/users/*/profile/*"
+      },
+      {
+        Sid    = "PublicReadProjectImages"
+        Effect = "Allow"
+        Principal = "*"
+        Action   = "s3:GetObject"
+        Resource = "${aws_s3_bucket.assets.arn}/users/*/projects/*"
+      },
+      {
+        Sid    = "PublicReadResumeFiles"
+        Effect = "Allow"
+        Principal = "*"
+        Action   = "s3:GetObject"
+        Resource = "${aws_s3_bucket.assets.arn}/users/*/resume/*"
       },
       {
         Sid    = "DenyInsecureUploads"
@@ -151,6 +171,19 @@ resource "aws_s3_bucket_policy" "assets" {
       }
     ]
   })
+}
+
+# CORS Configuration: Allow direct uploads from frontend
+resource "aws_s3_bucket_cors_configuration" "assets" {
+  bucket = aws_s3_bucket.assets.id
+
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["GET", "PUT", "POST", "HEAD"]
+    allowed_origins = ["*"]  # Allow all origins for image access
+    expose_headers  = ["ETag", "x-amz-server-side-encryption", "x-amz-request-id", "x-amz-id-2"]
+    max_age_seconds = 3000
+  }
 }
 
 # ============================================
@@ -297,7 +330,8 @@ resource "aws_iam_role_policy" "upload_lambda" {
         Effect = "Allow"
         Action = [
           "s3:GetObject",
-          "s3:PutObject"
+          "s3:PutObject",
+          "s3:PutObjectAcl"
         ]
         Resource = "${aws_s3_bucket.assets.arn}/users/*"
       },
@@ -396,6 +430,7 @@ resource "aws_lambda_function" "profiles" {
     variables = {
       PROFILES_TABLE = aws_dynamodb_table.profiles.name
       USERS_TABLE    = aws_dynamodb_table.users.name
+      S3_BUCKET      = aws_s3_bucket.assets.bucket
     }
   }
 
@@ -431,7 +466,7 @@ resource "aws_lambda_function" "upload" {
   filename         = "${path.module}/../lambda/upload.zip"
   function_name    = "${var.project_name}-upload"
   role            = aws_iam_role.upload_lambda.arn
-  handler         = "index.handler"
+  handler         = "main.handler"
   runtime         = "python3.11"
   timeout         = 30
 

@@ -1,0 +1,22 @@
+{
+  "version": "1.0",
+  "routeKey": "POST /upload-url",
+  "rawPath": "/upload-url",
+  "headers": {
+    "content-type": "application/json",
+    "origin": "http://localhost:8080"
+  },
+  "requestContext": {
+    "http": {
+      "method": "POST",
+      "path": "/upload-url"
+    },
+    "authorizer": {
+      "claims": {
+        "sub": "test-user-id"
+      }
+    }
+  },
+  "body": "{\"file_type\":\"profile_image\",\"content_type\":\"image/jpeg\",\"file_extension\":\".jpg\"}"
+}
+
