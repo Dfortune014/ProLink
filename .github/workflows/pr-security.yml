@@ -66,15 +66,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          submodules: recursive
           fetch-depth: 0
-
-      - name: Checkout frontend repository
-        uses: actions/checkout@v4
-        with:
-          repository: Dfortune014/ProLink
-          path: frontend
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -170,15 +162,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          submodules: recursive
           fetch-depth: 0
-
-      - name: Checkout frontend repository
-        uses: actions/checkout@v4
-        with:
-          repository: Dfortune014/ProLink
-          path: frontend
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate npm SBOM
         uses: cyclonedx/gh-action@v1
