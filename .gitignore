@@ -61,6 +61,7 @@ downloads/
 eggs/
 .eggs/
 lib/
+!frontend/src/lib/
 lib64/
 parts/
 sdist/
@@ -90,6 +91,7 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 .pnpm-store/
+node_modules/
 
 # DVC (Data Version Control)
 .dvc/
@@ -134,4 +136,16 @@ coverage/
 *.bak
 *.backup
 *.old
-*.orignode_modules/
+*.orig
+
+# Security Scan
+# Security Documentation
+SECURITY_SCAN_RESULTS.md
+SECURITY_SCAN_VULNERABILITIES_FIXED.md
+SECURITY_SCAN_REPORT.md
+SECURITY_REVIEW_REPORT.md
+SECURITY_FIXES_SUMMARY.md
+SECURITY_CHECKLIST.md
+CRITICAL_ISSUES_FIXED.md
+security-scan-*.json
+security-scan-*.txt
