@@ -1,0 +1,85 @@
+name: Main Branch Build
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+
+env:
+  NODE_VERSION: '18'
+
+jobs:
+  build-and-lint:
+    name: Build & Lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint (FAIL on errors)
+        run: npm run lint
+        # No continue-on-error - linting errors should block
+
+      - name: Validate Required Secrets
+        run: |
+          if [ -z "${{ secrets.VITE_API_GATEWAY_URL }}" ]; then
+            echo "❌ Required secret VITE_API_GATEWAY_URL is missing."
+            echo "   Please configure VITE_API_GATEWAY_URL in repository settings."
+            exit 1
+          fi
+          echo "✅ Required secrets are configured"
+
+      - name: Build application
+        run: npm run build
+        env:
+          VITE_API_GATEWAY_URL: ${{ secrets.VITE_API_GATEWAY_URL }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: frontend/dist
+          retention-days: 7
+
+
+# --------------------------------------------------------------------
+# MAIN BRANCH BUILD VALIDATION
+# --------------------------------------------------------------------
+# Purpose:
+#   Validate application integrity after security
+#   approval and successful merge into main.
+#
+# What This Workflow Does:
+#   - Installs application dependencies
+#   - Runs linting checks (FAILS on errors)
+#   - Builds production artifacts
+#   - Publishes build outputs as artifacts
+#
+# What This Workflow Does NOT Do:
+#   - No security scanning
+#   - No secret access beyond build-time variables
+#   - No deployment
+#
+# Trust Boundary:
+#   Post-merge / Pre-deployment
+#
+# Rationale:
+#   Security enforcement occurs before merge.
+#   This workflow assumes code has already passed
+#   security gates and focuses solely on build correctness.
+# --------------------------------------------------------------------
