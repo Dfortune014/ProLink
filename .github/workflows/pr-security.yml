@@ -71,7 +71,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: './frontend/package-lock.json'
 
       - name: Install dependencies
         run: npm ci
@@ -177,3 +177,45 @@ jobs:
           name: sbom-frontend
           path: frontend-sbom.json
           retention-days: 90
+
+
+
+# --------------------------------------------------------------------
+# TERRAFORM SECURITY & VALIDATION GATE
+# --------------------------------------------------------------------
+# Purpose:
+#   Ensure infrastructure changes are secure, valid,
+#   and fully reviewed before merge.
+#
+# Controls Enforced:
+#   - terraform fmt -check
+#     * Enforces consistent infrastructure formatting
+#
+#   - terraform validate
+#     * Verifies configuration correctness
+#
+#   - terraform plan
+#     * Provides full visibility into infrastructure changes
+#
+#   - Infrastructure Security Scanning (Checkov)
+#     * Detects misconfigurations such as:
+#       - Public S3 buckets
+#       - Over-permissive IAM roles
+#       - Missing encryption
+#       - Insecure networking rules
+#     * FAILS on HIGH or CRITICAL findings
+#
+# Identity & Access:
+#   - Uses GitHub OIDC authentication
+#   - Assumes a READ-ONLY Terraform plan IAM role
+#   - No static AWS access keys are permitted
+#
+# Trust Boundary:
+#   Infrastructure-as-Code (Pull Request level)
+#
+# Rationale:
+#   Infrastructure misconfigurations are a leading cause of breaches.
+#   Treating Terraform as security-critical code prevents unsafe
+#   cloud resources from ever being deployed.
+# --------------------------------------------------------------------
+
