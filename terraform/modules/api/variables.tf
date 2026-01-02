@@ -32,3 +32,8 @@ variable "cognito_user_pool_arn" {
   type        = string
   default     = ""
 }
+variable "s3_assets_bucket_name" {
+  description = "Name of the S3 bucket for assets (if not provided, will be auto-generated)"
+  type        = string
+  default     = ""
+}

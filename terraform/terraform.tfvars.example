@@ -1,0 +1,42 @@
+# ProLynk Terraform Variables Example
+# Copy this file to terraform.tfvars and fill in the actual values
+# DO NOT commit terraform.tfvars to version control - it contains sensitive information
+
+aws_region            = "us-east-1"
+project_name          = "prolink"
+cognito_domain_prefix = "prolink-auth"
+
+# Environment: dev, staging, or production
+environment = "dev"
+
+# Callback URLs for OAuth (production example)
+# For development, use: ["http://localhost:3000/auth/callback"]
+# For production, use: ["https://prolynk.ee/auth/callback"]
+callback_urls = ["http://localhost:3000/auth/callback"]
+
+# Logout URLs (production example)
+# For development, use: ["http://localhost:3000"]
+# For production, use: ["https://prolynk.ee"]
+logout_urls = ["http://localhost:3000"]
+
+# CORS Origins (production example)
+# For development, use: ["http://localhost:3000", "http://localhost:8080"]
+# For production, use: ["https://prolynk.ee", "https://www.prolynk.ee"]
+cors_origins = ["http://localhost:3000", "http://localhost:8080"]
+
+# Google OAuth2 credentials
+# For production, use AWS Secrets Manager instead of hardcoding here
+google_client_id     = "YOUR_GOOGLE_CLIENT_ID"
+google_client_secret = "YOUR_GOOGLE_CLIENT_SECRET"  # SECURITY: Move to AWS Secrets Manager for production
+
+# LinkedIn OAuth2 credentials
+# For production, use AWS Secrets Manager instead of hardcoding here
+linkedin_client_id     = "YOUR_LINKEDIN_CLIENT_ID"
+linkedin_client_secret = "YOUR_LINKEDIN_CLIENT_SECRET"  # SECURITY: Move to AWS Secrets Manager for production
+
+# SECURITY NOTES:
+# 1. NEVER commit terraform.tfvars to version control
+# 2. For production, store OAuth secrets in AWS Secrets Manager
+# 3. Use environment-specific tfvars files (terraform.tfvars.dev, terraform.tfvars.prod)
+# 4. Rotate secrets if they were ever committed to Git history
+

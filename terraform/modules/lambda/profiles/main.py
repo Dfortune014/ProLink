@@ -4,26 +4,68 @@ import boto3
 from datetime import datetime
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
+from botocore.client import Config
 
 dynamodb = boto3.resource('dynamodb')
 profiles_table = dynamodb.Table(os.environ['PROFILES_TABLE'])
 users_table = dynamodb.Table(os.environ['USERS_TABLE'])
 
+# S3 client for generating presigned URLs
+s3_bucket_name = os.environ.get('S3_BUCKET', '')
+s3_client = boto3.client('s3', config=Config(signature_version='s3v4')) if s3_bucket_name else None
+
+# Logging helper - only log detailed debug info in non-production environments
+ENVIRONMENT = os.environ.get('ENVIRONMENT', 'dev')
+IS_DEBUG = ENVIRONMENT != 'production'
+
+def log_debug(message, data=None):
+    """Log debug messages only in non-production environments"""
+    if IS_DEBUG:
+        if data:
+            print(f"DEBUG: {message}: {data}")
+        else:
+            print(f"DEBUG: {message}")
+
+def log_error(message, error=None, include_traceback=False):
+    """Log errors - always log, but sanitize in production"""
+    if error:
+        error_type = type(error).__name__
+        print(f"ERROR: {message} - {error_type}: {str(error)}")
+        if include_traceback:
+            import traceback
+            print(traceback.format_exc())
+    else:
+        print(f"ERROR: {message}")
+
+def log_info(message, data=None):
+    """Log informational messages"""
+    if data:
+        print(f"INFO: {message}: {data}")
+    else:
+        print(f"INFO: {message}")
+
 # CORS headers - must match origin exactly when using credentials
 # Note: When allow_credentials is true, cannot use wildcard '*'
 def get_cors_headers(origin=None):
     """Get CORS headers based on request origin"""
-    # Allowed origins
-    allowed_origins = ['http://localhost:8080', 'http://localhost:3000']
+    # Get allowed origins from environment variable, fallback to localhost for development
+    cors_origins_env = os.environ.get('CORS_ORIGINS', '')
+    if cors_origins_env:
+        allowed_origins = [origin.strip() for origin in cors_origins_env.split(',') if origin.strip()]
+    else:
+        # Fallback for development
+        allowed_origins = ['http://localhost:8080', 'http://localhost:3000']
     
     # If origin is provided and in allowed list, use it; otherwise use first allowed
     if origin and origin in allowed_origins:
         allowed_origin = origin
-    elif origin and origin.startswith('http://localhost'):
-        # Allow any localhost port for development
+    elif origin and origin.startswith('http://localhost') and not cors_origins_env:
+        # Allow any localhost port for development only (if no env var set)
         allowed_origin = origin
-    else:
+    elif allowed_origins:
         allowed_origin = allowed_origins[0]  # Default to first allowed origin
+    else:
+        allowed_origin = '*'  # Fallback (should not happen in production)
     
     return {
         'Access-Control-Allow-Origin': allowed_origin,
@@ -38,24 +80,96 @@ def get_cors_headers(origin=None):
 CORS_HEADERS = get_cors_headers()
 
 def _get_resume_url_from_key(resume_key):
-    """Generate resume URL from resume_key"""
-    if resume_key:
-        bucket_name = os.environ.get('S3_BUCKET', '')
-        if bucket_name:
-            return f"https://{bucket_name}.s3.amazonaws.com/{resume_key}"
-    return None
+    """Generate presigned S3 URL from resume key (15 minutes expiration)"""
+    print(f"DEBUG: _get_resume_url_from_key called with key: {resume_key}")
+    print(f"DEBUG: s3_client exists: {s3_client is not None}, s3_bucket_name: {s3_bucket_name}")
+    
+    if not resume_key:
+        print("WARN: resume_key is empty or None")
+        return None
+    
+    if not s3_client:
+        print("ERROR: s3_client is not initialized")
+        return None
+    
+    if not s3_bucket_name:
+        print("ERROR: s3_bucket_name is not set")
+        return None
+    
+    try:
+        print(f"DEBUG: Generating presigned URL for bucket: {s3_bucket_name}, key: {resume_key}")
+        presigned_url = s3_client.generate_presigned_url(
+            'get_object',
+            Params={
+                'Bucket': s3_bucket_name,
+                'Key': resume_key,
+            },
+            ExpiresIn=900,  # 15 minutes
+            HttpMethod='GET'
+        )
+        print(f"DEBUG: Successfully generated presigned URL: {presigned_url[:100]}...")
+        return presigned_url
+    except Exception as e:
+        print(f"ERROR: Failed to generate presigned URL for resume: {str(e)}")
+        import traceback
+        print(f"ERROR: Traceback: {traceback.format_exc()}")
+        return None
 
 def _get_resume_url(profile):
-    """Get resume URL from profile, generating from resume_key if needed"""
+    """Get resume URL from profile, generating presigned URL from resume_key if needed"""
+    print(f"DEBUG: _get_resume_url called with profile keys: {list(profile.keys()) if profile else 'None'}")
     resume_url = profile.get('resume_url') or profile.get('resumeUrl')
-    if resume_url:
-        return resume_url
-    # If resume_key exists but resume_url doesn't, generate the URL
     resume_key = profile.get('resume_key')
-    generated_url = _get_resume_url_from_key(resume_key)
-    if generated_url:
-        return generated_url
+    
+    print(f"DEBUG: _get_resume_url - resume_url: {resume_url}, resume_key: {resume_key}")
+    
+    # If resume_url exists but is a direct S3 URL (not presigned), regenerate as presigned
+    if resume_url and 's3.amazonaws.com' in resume_url and 'X-Amz-Signature' not in resume_url:
+        print("DEBUG: resume_url is direct S3 URL (not presigned), regenerating...")
+        if resume_key:
+            new_url = _get_resume_url_from_key(resume_key)
+            print(f"DEBUG: Regenerated URL: {new_url[:100] if new_url else 'None'}...")
+            return new_url or resume_url
+        return resume_url
+    
+    if resume_url:
+        print(f"DEBUG: Using existing resume_url: {resume_url[:100]}...")
+        return resume_url
+    
+    # If resume_key exists but resume_url doesn't, generate the presigned URL
+    if resume_key:
+        print(f"DEBUG: resume_key exists but no resume_url, generating from key...")
+        generated_url = _get_resume_url_from_key(resume_key)
+        if generated_url:
+            print(f"DEBUG: Generated resume_url from key: {generated_url[:100]}...")
+            return generated_url
+        else:
+            print("WARN: Failed to generate resume_url from key")
+    else:
+        print("DEBUG: No resume_key found in profile")
+    
+    print("DEBUG: Returning empty string for resume_url")
     return ''
+
+def _get_avatar_url_from_key(avatar_key):
+    """Generate presigned S3 URL from avatar key (15 minutes expiration)"""
+    if not avatar_key or not s3_client or not s3_bucket_name:
+        return None
+    
+    try:
+        presigned_url = s3_client.generate_presigned_url(
+            'get_object',
+            Params={
+                'Bucket': s3_bucket_name,
+                'Key': avatar_key,
+            },
+            ExpiresIn=900,  # 15 minutes
+            HttpMethod='GET'
+        )
+        return presigned_url
+    except Exception as e:
+        print(f"ERROR: Failed to generate presigned URL for avatar: {str(e)}")
+        return None
 
 def get_user_id_from_event(event):
     """Extract user_id from JWT claims"""
@@ -69,7 +183,7 @@ def get_user_id_from_event(event):
         if claims:
             user_id = claims.get('sub')
             if user_id:
-                print(f"DEBUG: Extracted user_id from HTTP API v2 format: {user_id}")
+                log_debug("Extracted user_id from HTTP API v2 format")
                 return user_id
         
         # Fallback to HTTP API v1 format: authorizer.jwt.claims
@@ -78,25 +192,25 @@ def get_user_id_from_event(event):
         if claims:
             user_id = claims.get('sub')
             if user_id:
-                print(f"DEBUG: Extracted user_id from HTTP API v1 format: {user_id}")
+                log_debug("Extracted user_id from HTTP API v1 format")
                 return user_id
         
-        print(f"DEBUG: No user_id found in authorizer claims")
-        print(f"DEBUG: Authorizer structure: {json.dumps(authorizer, default=str)}")
+        log_debug("No user_id found in authorizer claims")
+        if IS_DEBUG:
+            # Only log authorizer structure in debug mode (may contain sensitive data)
+            print(f"DEBUG: Authorizer keys: {list(authorizer.keys())}")
         return None
     except Exception as e:
-        print(f"DEBUG: Error extracting user_id: {str(e)}")
-        import traceback
-        print(f"DEBUG: Traceback: {traceback.format_exc()}")
+        log_error("Error extracting user_id", e, include_traceback=IS_DEBUG)
         return None
 
 def handler(event, context):
-    # DEBUG: Log the full event structure
-    print("=" * 80)
-    print("LAMBDA INVOCATION START")
-    print("=" * 80)
-    print(f"Event keys: {list(event.keys())}")
-    print(f"Full event: {json.dumps(event, default=str)}")
+    # Log invocation start (minimal info)
+    log_info("Lambda invocation started")
+    if IS_DEBUG:
+        print(f"DEBUG: Event keys: {list(event.keys())}")
+        # Only log full event in debug mode (may contain sensitive data)
+        # print(f"DEBUG: Full event: {json.dumps(event, default=str)}")
     
     # Get origin from request headers for CORS
     request_headers = event.get('headers', {}) or {}
@@ -108,20 +222,21 @@ def handler(event, context):
     http_method = http_context.get('method')
     path = http_context.get('path') or event.get('rawPath')
     
-    print(f"DEBUG: HTTP API v2 - method: {http_method}, path: {path}")
-    print(f"DEBUG: Origin: {origin}")
+    log_debug(f"HTTP API v2 - method: {http_method}, path: {path}")
     
     # Fallback to API Gateway v1 format if v2 format not found
     if not http_method:
         http_method = request_context.get('httpMethod')
-        print(f"DEBUG: Fallback to v1 - method: {http_method}")
+        log_debug(f"Fallback to v1 - method: {http_method}")
     if not path:
         path = event.get('path') or request_context.get('path')
-        print(f"DEBUG: Fallback path: {path}")
+        log_debug(f"Fallback path: {path}")
     
-    print(f"DEBUG: Final method: {http_method}, Final path: {path}")
-    print(f"DEBUG: Headers: {event.get('headers', {})}")
-    print(f"DEBUG: Query params: {event.get('queryStringParameters', {})}")
+    log_debug(f"Final method: {http_method}, Final path: {path}")
+    if IS_DEBUG:
+        # Only log headers/query params in debug mode (may contain sensitive data)
+        log_debug(f"Headers keys: {list(request_headers.keys())}")
+        log_debug(f"Query params: {event.get('queryStringParameters', {})}")
     
     # Get CORS headers for this request (will be used by all functions)
     cors_headers = get_cors_headers(origin)
@@ -129,9 +244,7 @@ def handler(event, context):
     try:
         # Handle OPTIONS (CORS preflight) first, before path normalization
         if http_method == 'OPTIONS':
-            print("=" * 80)
-            print("OPTIONS REQUEST DETECTED - Handling CORS preflight")
-            print("=" * 80)
+            log_debug("OPTIONS request detected - Handling CORS preflight")
             # Handle CORS preflight for any endpoint
             # Get the origin from the request headers for proper CORS response
             request_headers = event.get('headers', {}) or {}
@@ -140,19 +253,13 @@ def handler(event, context):
             # Get CORS headers with proper origin and credentials
             cors_response_headers = get_cors_headers(origin)
             
-            print(f"DEBUG: OPTIONS response - origin: {origin}, allowed_origin: {allowed_origin}")
-            print(f"DEBUG: OPTIONS response headers: {cors_response_headers}")
+            log_debug(f"OPTIONS response - origin: {origin}")
             
             response = {
                 'statusCode': 200,
                 'headers': cors_response_headers,
                 'body': ''
             }
-            
-            print(f"DEBUG: OPTIONS response: {json.dumps(response, default=str)}")
-            print("=" * 80)
-            print("OPTIONS REQUEST HANDLED SUCCESSFULLY")
-            print("=" * 80)
             
             return response
         
@@ -164,70 +271,70 @@ def handler(event, context):
         
         # Check if this is the username check endpoint
         if http_method == 'GET' and path and '/username/check' in path:
-            print("DEBUG: Routing to check_username_availability")
+            log_debug("Routing to check_username_availability")
             return check_username_availability(event, cors_headers)
         elif http_method == 'GET' and path == '/users/me':
-            print("DEBUG: Routing to get_current_user_profile")
+            log_debug("Routing to get_current_user_profile")
             return get_current_user_profile(event, cors_headers)
         elif http_method == 'POST' and path == '/profiles':
+            log_debug("Routing to create_or_update_profile")
             return create_or_update_profile(event, cors_headers)
         elif http_method == 'GET' and path.startswith('/profiles/'):
             username = path.split('/')[-1]
+            log_debug(f"Routing to get_public_profile for username: {username}")
             # Pass event to check if requester is the owner
             return get_public_profile(username, cors_headers, event)
         else:
-            print(f"DEBUG: Method not allowed - method: {http_method}, path: {path}")
+            log_debug(f"Method not allowed - method: {http_method}, path: {path}")
             return {
                 'statusCode': 405,
                 'headers': cors_headers,
                 'body': json.dumps({'error': 'Method not allowed'})
             }
     except Exception as e:
-        print("=" * 80)
-        print("ERROR IN HANDLER")
-        print("=" * 80)
-        print(f"Error type: {type(e).__name__}")
-        print(f"Error message: {str(e)}")
-        import traceback
-        print(f"Traceback: {traceback.format_exc()}")
-        print("=" * 80)
+        log_error("Error in handler", e, include_traceback=IS_DEBUG)
+        cors_headers_final = cors_headers if 'cors_headers' in locals() else get_cors_headers()
         
         return {
             'statusCode': 500,
-            'headers': cors_headers if cors_headers else get_cors_headers(),
+            'headers': cors_headers_final,
             'body': json.dumps({
                 'error': 'Internal server error',
-                'message': str(e),
-                'error_type': type(e).__name__
+                'message': 'An error occurred processing your request'
             })
         }
 
 def create_or_update_profile(event, cors_headers=None):
     """POST /profiles - Create or update profile"""
-    print("=" * 80)
-    print("create_or_update_profile CALLED")
-    print("=" * 80)
+    log_info("create_or_update_profile called")
     
     if cors_headers is None:
         cors_headers = get_cors_headers()
     
     user_id = get_user_id_from_event(event)
-    print(f"DEBUG: Extracted user_id: {user_id}")
+    log_debug("Extracted user_id")
     
     if not user_id:
-        print("ERROR: No user_id found in event - returning 401")
+        log_error("No user_id found in event - returning 401")
         return {
             'statusCode': 401,
             'headers': cors_headers,
             'body': json.dumps({'error': 'Unauthorized', 'message': 'No user_id found in JWT claims'})
         }
     
-    print(f"DEBUG: Processing profile creation/update for user_id: {user_id}")
+    log_info(f"Processing profile creation/update for user_id: {user_id}")
     
-    body = json.loads(event.get('body', '{}'))
-    print(f"DEBUG: Request body keys: {list(body.keys())}")
-    print(f"DEBUG: Request body social_links: {body.get('social_links')}")
-    print(f"DEBUG: Full request body: {json.dumps(body, default=str)}")
+    try:
+        body = json.loads(event.get('body', '{}'))
+    except json.JSONDecodeError as e:
+        log_error("Invalid JSON in request body", e)
+        return {
+            'statusCode': 400,
+            'headers': cors_headers,
+            'body': json.dumps({'error': 'Invalid JSON', 'message': 'Request body must be valid JSON'})
+        }
+    
+    log_debug(f"Request body keys: {list(body.keys())}")
     
     # Validate required fields
     username = body.get('username')
@@ -248,10 +355,14 @@ def create_or_update_profile(event, cors_headers=None):
                 'body': json.dumps({'error': 'Username already taken'})
             }
     except ClientError as e:
+        # Log detailed error for debugging
+        log_error("Database error checking username availability", e, include_traceback=IS_DEBUG)
+        
+        # Return generic error to user
         return {
             'statusCode': 500,
             'headers': cors_headers if cors_headers else get_cors_headers(),
-            'body': json.dumps({'error': f'Database error: {str(e)}'})
+            'body': json.dumps({'error': 'Internal server error', 'message': 'An error occurred processing your request'})
         }
     
     # Get or update user record
@@ -297,10 +408,14 @@ def create_or_update_profile(event, cors_headers=None):
                 ExpressionAttributeValues=expression_attribute_values
             )
     except ClientError as e:
+        # Log detailed error for debugging
+        log_error("Database error updating user record", e, include_traceback=IS_DEBUG)
+        
+        # Return generic error to user
         return {
             'statusCode': 500,
             'headers': cors_headers if cors_headers else get_cors_headers(),
-            'body': json.dumps({'error': f'Database error: {str(e)}'})
+            'body': json.dumps({'error': 'Internal server error', 'message': 'An error occurred processing your request'})
         }
     
     # Check if profile exists first to preserve existing fields
@@ -501,11 +616,14 @@ def create_or_update_profile(event, cors_headers=None):
             'body': json.dumps({'message': 'Profile saved successfully', 'profile': profile_item})
         }
     except ClientError as e:
-        print(f"✗ ERROR saving profile record: {str(e)}")
+        # Log detailed error for debugging
+        log_error("Database error saving profile record", e, include_traceback=IS_DEBUG)
+        
+        # Return generic error to user
         return {
             'statusCode': 500,
             'headers': cors_headers if cors_headers else get_cors_headers(),
-            'body': json.dumps({'error': f'Database error: {str(e)}'})
+            'body': json.dumps({'error': 'Internal server error', 'message': 'An error occurred saving your profile'})
         }
 
 def get_current_user_profile(event, cors_headers=None):
@@ -567,11 +685,14 @@ def get_current_user_profile(event, cors_headers=None):
             'body': json.dumps(result)
         }
     except ClientError as e:
-        print(f"ERROR: Database error: {str(e)}")
+        # Log detailed error for debugging
+        log_error("Database error retrieving current user profile", e, include_traceback=IS_DEBUG)
+        
+        # Return generic error to user
         return {
             'statusCode': 500,
             'headers': cors_headers,
-            'body': json.dumps({'error': f'Database error: {str(e)}'})
+            'body': json.dumps({'error': 'Internal server error', 'message': 'An error occurred retrieving your profile'})
         }
     except Exception as e:
         print(f"ERROR: Unexpected error: {str(e)}")
@@ -627,6 +748,17 @@ def get_public_profile(username, cors_headers=None, event=None):
         # Build public profile response
         # Prefer avatar_url, fallback to profile_image_url for backward compatibility
         avatar_url = profile.get('avatar_url') or profile.get('profile_image_url', '')
+        avatar_key = profile.get('avatar_key')
+        
+        # If avatar_url is a direct S3 URL (not presigned), generate presigned URL from key
+        if avatar_url and 's3.amazonaws.com' in avatar_url and 'X-Amz-Signature' not in avatar_url:
+            if avatar_key:
+                presigned_avatar_url = _get_avatar_url_from_key(avatar_key)
+                if presigned_avatar_url:
+                    avatar_url = presigned_avatar_url
+        # If no avatar_url but we have avatar_key, generate presigned URL
+        elif not avatar_url and avatar_key:
+            avatar_url = _get_avatar_url_from_key(avatar_key) or ''
         
         # Get social_links from profile, ensure it's a dict
         social_links = profile.get('social_links', {})
@@ -690,8 +822,11 @@ def get_public_profile(username, cors_headers=None, event=None):
         
         # Debug: Log resume_url
         print(f"DEBUG: Profile resume_url: {profile.get('resume_url')}, resumeUrl: {profile.get('resumeUrl')}, resume_key: {profile.get('resume_key')}")
-        print(f"DEBUG: Generated resume_url: {_get_resume_url(profile)}")
+        generated_resume_url = _get_resume_url(profile)
+        print(f"DEBUG: Generated resume_url: {generated_resume_url}")
         print(f"DEBUG: Public profile resume_url: {public_profile.get('resume_url')}")
+        print(f"DEBUG: Full public_profile keys: {list(public_profile.keys())}")
+        print(f"DEBUG: Full public_profile resume data: {json.dumps({k: v for k, v in public_profile.items() if 'resume' in k.lower()})}")
         print(f"DEBUG: S3_BUCKET env var: {os.environ.get('S3_BUCKET', 'NOT SET')}")
         
         # Ensure all data is JSON serializable
@@ -727,13 +862,14 @@ def get_public_profile(username, cors_headers=None, event=None):
             'body': json.dumps(public_profile, default=str)
         }
     except ClientError as e:
-        import traceback
-        print(f"ERROR: Database error in get_public_profile: {str(e)}")
-        print(f"Traceback: {traceback.format_exc()}")
+        # Log detailed error for debugging
+        log_error("Database error retrieving public profile", e, include_traceback=IS_DEBUG)
+        
+        # Return generic error to user
         return {
             'statusCode': 500,
             'headers': cors_headers,
-            'body': json.dumps({'error': 'Database error', 'message': str(e)})
+            'body': json.dumps({'error': 'Internal server error', 'message': 'An error occurred retrieving the profile'})
         }
     except Exception as e:
         import traceback

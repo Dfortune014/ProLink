@@ -22,15 +22,35 @@ variable "cognito_domain_prefix" {
 }
 
 variable "callback_urls" {
-    description = "The callback URLs for the Cognito domain"
-    type = list(string)
-    default = ["http://localhost:3000/auth/callback"]
+    description = "The callback URLs for the Cognito domain (must be explicitly set, no default for security)"
+    type        = list(string)
+    # No default - must be explicitly set to avoid localhost in production
+    validation {
+        condition     = length(var.callback_urls) > 0
+        error_message = "callback_urls must contain at least one URL"
+    }
+    validation {
+        condition = alltrue([
+            for url in var.callback_urls : can(regex("^https?://", url))
+        ])
+        error_message = "All callback URLs must be valid HTTP/HTTPS URLs"
+    }
 }
 
 variable "logout_urls" {
-    description = "The logout URLs for the Cognito domain"
-    type = list(string)
-    default = ["http://localhost:3000"]
+    description = "The logout URLs for the Cognito domain (must be explicitly set, no default for security)"
+    type        = list(string)
+    # No default - must be explicitly set to avoid localhost in production
+    validation {
+        condition     = length(var.logout_urls) > 0
+        error_message = "logout_urls must contain at least one URL"
+    }
+    validation {
+        condition = alltrue([
+            for url in var.logout_urls : can(regex("^https?://", url))
+        ])
+        error_message = "All logout URLs must be valid HTTP/HTTPS URLs"
+    }
 }
 
 variable "google_client_id" {
@@ -60,13 +80,70 @@ variable "linkedin_client_secret" {
 }
 
 variable "environment" {
-  description = "Environment name"
+  description = "Environment name (dev, staging, or production)"
   type        = string
-  default     = "dev"
+  # No default - must be explicitly set to avoid incorrect tagging in production
+  validation {
+    condition     = contains(["dev", "staging", "production"], var.environment)
+    error_message = "Environment must be one of: dev, staging, or production"
+  }
 }
 
 variable "cors_origins" {
-  description = "Allowed CORS origins for API Gateway"
+  description = "Allowed CORS origins for API Gateway (must be explicitly set, no default for security)"
   type        = list(string)
-  default     = ["http://localhost:3000", "http://localhost:8080"]
+  # No default - must be explicitly set to avoid localhost in production
+  validation {
+    condition     = length(var.cors_origins) > 0
+    error_message = "cors_origins must contain at least one origin"
+  }
+  validation {
+    condition = alltrue([
+      for origin in var.cors_origins : can(regex("^https?://", origin))
+    ])
+    error_message = "All CORS origins must be valid HTTP/HTTPS URLs"
+  }
+}
+
+# OAuth Secret Sets for Rotation
+variable "set1_google_client_secret" {
+  description = "Google OAuth client secret - Set 1"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "set1_linkedin_client_secret" {
+  description = "LinkedIn OAuth client secret - Set 1"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "set2_google_client_secret" {
+  description = "Google OAuth client secret - Set 2"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "set2_linkedin_client_secret" {
+  description = "LinkedIn OAuth client secret - Set 2"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "set3_google_client_secret" {
+  description = "Google OAuth client secret - Set 3"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "set3_linkedin_client_secret" {
+  description = "LinkedIn OAuth client secret - Set 3"
+  type        = string
+  sensitive   = true
+  default     = ""
 }

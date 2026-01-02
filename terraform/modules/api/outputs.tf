@@ -32,3 +32,8 @@ output "pre_signup_lambda_arn" {
   description = "Pre-SignUp Lambda function ARN"
   value       = aws_lambda_function.pre_signup.arn
 }
+
+output "secret_rotation_lambda_arn" {
+  description = "Secret Rotation Lambda function ARN"
+  value       = aws_lambda_function.secret_rotation.arn
+}

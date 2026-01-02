@@ -1,0 +1,179 @@
+name: PR Security Checks
+
+on:
+  pull_request:
+    branches: [main, develop]
+
+env:
+  NODE_VERSION: '18'
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # Trust Boundary 1: Secret Scanning (FAIL on any finding)
+  secret-scan:
+    name: Secret Scanner (GitLeaks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run GitLeaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # No continue-on-error - secrets are always critical
+
+  # Trust Boundary 1: SAST - CodeQL
+  sast-codeql:
+    name: SAST - CodeQL Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ['javascript', 'python']
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          upload: true
+          category: "/language:${{ matrix.language }}"
+
+  # Trust Boundary 2: SCA - npm Audit (FAIL on HIGH+)
+  sca-npm:
+    name: SCA - npm Audit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run npm audit (HIGH+ fails)
+        run: |
+          # Run audit and capture output
+          npm audit --audit-level=high --json > npm-audit.json 2>&1 || AUDIT_EXIT=$?
+          
+          # Check if audit found high/critical vulnerabilities
+          if grep -q '"vulnerabilities":' npm-audit.json; then
+            HIGH_COUNT=$(jq '[.vulnerabilities[] | select(.severity == "high" or .severity == "critical")] | length' npm-audit.json || echo "0")
+            if [ "$HIGH_COUNT" -gt 0 ]; then
+              echo "❌ Found $HIGH_COUNT HIGH/CRITICAL vulnerabilities"
+              npm audit --audit-level=high
+              exit 1
+            fi
+          fi
+          
+          # Show moderate/low but don't fail
+          echo "⚠️  Checking for moderate vulnerabilities (non-blocking):"
+          npm audit --audit-level=moderate || true
+
+      - name: Upload npm audit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-results
+          path: frontend/npm-audit.json
+          retention-days: 30
+
+  # Trust Boundary 2: SCA - Python (FAIL on HIGH+)
+  sca-python:
+    name: SCA - Python Dependency Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install pip-audit
+        run: pip install pip-audit
+
+      - name: Scan Lambda functions (FAIL on HIGH+)
+        run: |
+          FAILED=0
+          for dir in terraform/modules/lambda/*/; do
+            if [ -f "$dir/requirements.txt" ]; then
+              echo "Scanning $dir"
+              # pip-audit exits non-zero if vulnerabilities found
+              pip-audit -r "$dir/requirements.txt" --desc --format json --output "$dir/audit-results.json" || FAILED=1
+              
+              # Check for high/critical severity
+              if [ -f "$dir/audit-results.json" ]; then
+                HIGH_COUNT=$(jq '[.vulnerabilities[] | select(.severity == "HIGH" or .severity == "CRITICAL")] | length' "$dir/audit-results.json" 2>/dev/null || echo "0")
+                if [ "$HIGH_COUNT" -gt 0 ]; then
+                  echo "❌ Found $HIGH_COUNT HIGH/CRITICAL vulnerabilities in $dir"
+                  FAILED=1
+                fi
+              fi
+            fi
+          done
+          
+          if [ "$FAILED" -eq 1 ]; then
+            echo "❌ High/Critical vulnerabilities found. Failing build."
+            exit 1
+          fi
+
+      - name: Upload Python audit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-audit-results
+          path: terraform/modules/lambda/**/audit-results.json
+          retention-days: 30
+
+  # Trust Boundary 2: SBOM Generation (Log only)
+  sbom-generation:
+    name: SBOM - Software Bill of Materials
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate npm SBOM
+        uses: cyclonedx/gh-action@v1
+        with:
+          project-name: 'ProLynk Frontend'
+          project-version: '1.0.0'
+          build-tools: 'npm'
+          build-command: 'npm ci'
+          working-directory: './frontend'
+          output-format: 'json'
+          output-file: 'frontend-sbom.json'
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-frontend
+          path: frontend-sbom.json
+          retention-days: 90

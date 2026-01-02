@@ -1,0 +1,184 @@
+﻿{
+    "auditReportVersion":  2,
+    "vulnerabilities":  {
+                            "esbuild":  {
+                                            "name":  "esbuild",
+                                            "severity":  "moderate",
+                                            "isDirect":  false,
+                                            "via":  [
+                                                        {
+                                                            "source":  1102341,
+                                                            "name":  "esbuild",
+                                                            "dependency":  "esbuild",
+                                                            "title":  "esbuild enables any website to send any requests to the development server and read the response",
+                                                            "url":  "https://github.com/advisories/GHSA-67mh-4wv8-2f99",
+                                                            "severity":  "moderate",
+                                                            "cwe":  [
+                                                                        "CWE-346"
+                                                                    ],
+                                                            "cvss":  {
+                                                                         "score":  5.3,
+                                                                         "vectorString":  "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:H/I:N/A:N"
+                                                                     },
+                                                            "range":  "\u003c=0.24.2"
+                                                        }
+                                                    ],
+                                            "effects":  [
+                                                            "vite"
+                                                        ],
+                                            "range":  "\u003c=0.24.2",
+                                            "nodes":  [
+                                                          "node_modules/esbuild"
+                                                      ],
+                                            "fixAvailable":  true
+                                        },
+                            "glob":  {
+                                         "name":  "glob",
+                                         "severity":  "high",
+                                         "isDirect":  false,
+                                         "via":  [
+                                                     {
+                                                         "source":  1109842,
+                                                         "name":  "glob",
+                                                         "dependency":  "glob",
+                                                         "title":  "glob CLI: Command injection via -c/--cmd executes matches with shell:true",
+                                                         "url":  "https://github.com/advisories/GHSA-5j98-mcp5-4vw2",
+                                                         "severity":  "high",
+                                                         "cwe":  [
+                                                                     "CWE-78"
+                                                                 ],
+                                                         "cvss":  {
+                                                                      "score":  7.5,
+                                                                      "vectorString":  "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:H/A:H"
+                                                                  },
+                                                         "range":  "\u003e=10.2.0 \u003c10.5.0"
+                                                     }
+                                                 ],
+                                         "effects":  [
+
+                                                     ],
+                                         "range":  "10.2.0 - 10.4.5",
+                                         "nodes":  [
+                                                       "node_modules/glob"
+                                                   ],
+                                         "fixAvailable":  true
+                                     },
+                            "js-yaml":  {
+                                            "name":  "js-yaml",
+                                            "severity":  "moderate",
+                                            "isDirect":  false,
+                                            "via":  [
+                                                        {
+                                                            "source":  1109802,
+                                                            "name":  "js-yaml",
+                                                            "dependency":  "js-yaml",
+                                                            "title":  "js-yaml has prototype pollution in merge (\u003c\u003c)",
+                                                            "url":  "https://github.com/advisories/GHSA-mh29-5h37-fv8m",
+                                                            "severity":  "moderate",
+                                                            "cwe":  [
+                                                                        "CWE-1321"
+                                                                    ],
+                                                            "cvss":  {
+                                                                         "score":  5.3,
+                                                                         "vectorString":  "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:N"
+                                                                     },
+                                                            "range":  "\u003e=4.0.0 \u003c4.1.1"
+                                                        }
+                                                    ],
+                                            "effects":  [
+
+                                                        ],
+                                            "range":  "4.0.0 - 4.1.0",
+                                            "nodes":  [
+                                                          "node_modules/js-yaml"
+                                                      ],
+                                            "fixAvailable":  true
+                                        },
+                            "vite":  {
+                                         "name":  "vite",
+                                         "severity":  "moderate",
+                                         "isDirect":  true,
+                                         "via":  [
+                                                     {
+                                                         "source":  1107323,
+                                                         "name":  "vite",
+                                                         "dependency":  "vite",
+                                                         "title":  "Vite middleware may serve files starting with the same name with the public directory",
+                                                         "url":  "https://github.com/advisories/GHSA-g4jq-h2w9-997c",
+                                                         "severity":  "low",
+                                                         "cwe":  [
+                                                                     "CWE-22",
+                                                                     "CWE-200",
+                                                                     "CWE-284"
+                                                                 ],
+                                                         "cvss":  {
+                                                                      "score":  0,
+                                                                      "vectorString":  null
+                                                                  },
+                                                         "range":  "\u003c=5.4.19"
+                                                     },
+                                                     {
+                                                         "source":  1107327,
+                                                         "name":  "vite",
+                                                         "dependency":  "vite",
+                                                         "title":  "Vite\u0027s `server.fs` settings were not applied to HTML files",
+                                                         "url":  "https://github.com/advisories/GHSA-jqfw-vq24-v9c3",
+                                                         "severity":  "low",
+                                                         "cwe":  [
+                                                                     "CWE-23",
+                                                                     "CWE-200",
+                                                                     "CWE-284"
+                                                                 ],
+                                                         "cvss":  {
+                                                                      "score":  0,
+                                                                      "vectorString":  null
+                                                                  },
+                                                         "range":  "\u003c=5.4.19"
+                                                     },
+                                                     {
+                                                         "source":  1109131,
+                                                         "name":  "vite",
+                                                         "dependency":  "vite",
+                                                         "title":  "vite allows server.fs.deny bypass via backslash on Windows",
+                                                         "url":  "https://github.com/advisories/GHSA-93m4-6634-74q7",
+                                                         "severity":  "moderate",
+                                                         "cwe":  [
+                                                                     "CWE-22"
+                                                                 ],
+                                                         "cvss":  {
+                                                                      "score":  0,
+                                                                      "vectorString":  null
+                                                                  },
+                                                         "range":  "\u003e=5.2.6 \u003c=5.4.20"
+                                                     },
+                                                     "esbuild"
+                                                 ],
+                                         "effects":  [
+
+                                                     ],
+                                         "range":  "\u003c=6.1.6",
+                                         "nodes":  [
+                                                       "node_modules/vite"
+                                                   ],
+                                         "fixAvailable":  true
+                                     }
+                        },
+    "metadata":  {
+                     "vulnerabilities":  {
+                                             "info":  0,
+                                             "low":  0,
+                                             "moderate":  3,
+                                             "high":  1,
+                                             "critical":  0,
+                                             "total":  4
+                                         },
+                     "dependencies":  {
+                                          "prod":  292,
+                                          "dev":  199,
+                                          "optional":  76,
+                                          "peer":  0,
+                                          "peerOptional":  0,
+                                          "total":  492
+                                      }
+                 }
+}

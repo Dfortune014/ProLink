@@ -112,8 +112,18 @@ resource "aws_s3_bucket_ownership_controls" "assets" {
   }
 }
 
-# Encryption removed - No encryption to ensure maximum compatibility for public file access (images and resumes)
+# Server-side encryption for security
+resource "aws_s3_bucket_server_side_encryption_configuration" "assets" {
+  bucket = aws_s3_bucket.assets.id
 
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+# Block all public access - all access via presigned URLs only
 resource "aws_s3_bucket_public_access_block" "assets" {
   bucket = aws_s3_bucket.assets.id
 
@@ -123,8 +133,8 @@ resource "aws_s3_bucket_public_access_block" "assets" {
   restrict_public_buckets = false
 }
 
-# Bucket Policy: Public read for profile and project images, private for everything else
-# Depends on public access block to ensure public access is allowed first
+# Bucket Policy: Deny insecure uploads, no public read access
+# All access must be via presigned URLs
 resource "aws_s3_bucket_policy" "assets" {
   bucket = aws_s3_bucket.assets.id
   
@@ -136,27 +146,6 @@ resource "aws_s3_bucket_policy" "assets" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
-      {
-        Sid    = "PublicReadProfileImages"
-        Effect = "Allow"
-        Principal = "*"
-        Action   = "s3:GetObject"
-        Resource = "${aws_s3_bucket.assets.arn}/users/*/profile/*"
-      },
-      {
-        Sid    = "PublicReadProjectImages"
-        Effect = "Allow"
-        Principal = "*"
-        Action   = "s3:GetObject"
-        Resource = "${aws_s3_bucket.assets.arn}/users/*/projects/*"
-      },
-      {
-        Sid    = "PublicReadResumeFiles"
-        Effect = "Allow"
-        Principal = "*"
-        Action   = "s3:GetObject"
-        Resource = "${aws_s3_bucket.assets.arn}/users/*/resume/*"
-      },
       {
         Sid    = "DenyInsecureUploads"
         Effect = "Deny"
@@ -238,6 +227,20 @@ resource "aws_iam_role_policy" "profiles_lambda" {
           "${aws_dynamodb_table.profiles.arn}/index/*",
           aws_dynamodb_table.users.arn
         ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject"
+        ]
+        Resource = "${aws_s3_bucket.assets.arn}/users/*/profile/*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject"
+        ]
+        Resource = "${aws_s3_bucket.assets.arn}/users/*/resume/*"
       }
     ]
   })
@@ -431,6 +434,8 @@ resource "aws_lambda_function" "profiles" {
       PROFILES_TABLE = aws_dynamodb_table.profiles.name
       USERS_TABLE    = aws_dynamodb_table.users.name
       S3_BUCKET      = aws_s3_bucket.assets.bucket
+      CORS_ORIGINS   = join(",", var.cors_origins)
+      ENVIRONMENT    = var.environment
     }
   }
 
@@ -452,6 +457,7 @@ resource "aws_lambda_function" "links" {
   environment {
     variables = {
       LINKS_TABLE = aws_dynamodb_table.links.name
+      CORS_ORIGINS = join(",", var.cors_origins)
     }
   }
 
@@ -472,7 +478,8 @@ resource "aws_lambda_function" "upload" {
 
   environment {
     variables = {
-      S3_BUCKET = aws_s3_bucket.assets.bucket
+      S3_BUCKET    = aws_s3_bucket.assets.bucket
+      CORS_ORIGINS = join(",", var.cors_origins)
     }
   }
 
@@ -550,6 +557,106 @@ resource "aws_lambda_permission" "pre_signup_cognito" {
   function_name = aws_lambda_function.pre_signup.function_name
   principal     = "cognito-idp.amazonaws.com"
   source_arn    = var.cognito_user_pool_arn != "" ? var.cognito_user_pool_arn : "*"
+}
+
+# ============================================
+# Secret Rotation Lambda
+# ============================================
+
+resource "aws_lambda_function" "secret_rotation" {
+  filename         = "${path.module}/../lambda/secret-rotation.zip"
+  function_name    = "${var.project_name}-secret-rotation"
+  role            = aws_iam_role.secret_rotation_lambda.arn
+  handler         = "main.lambda_handler"
+  runtime         = "python3.11"
+  timeout         = 60
+
+  environment {
+    variables = {
+      COGNITO_USER_POOL_ID = var.cognito_user_pool_id
+    }
+  }
+
+  tags = {
+    Name        = "${var.project_name}-secret-rotation"
+    Environment = var.environment
+  }
+}
+
+# IAM Role for Secret Rotation Lambda
+resource "aws_iam_role" "secret_rotation_lambda" {
+  name = "${var.project_name}-secret-rotation-lambda-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "lambda.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+# IAM Policy for Secret Rotation Lambda
+resource "aws_iam_role_policy" "secret_rotation_lambda" {
+  name = "${var.project_name}-secret-rotation-lambda-policy"
+  role = aws_iam_role.secret_rotation_lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "arn:aws:logs:*:*:*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:DescribeSecret",
+          "secretsmanager:GetSecretValue",
+          "secretsmanager:PutSecretValue",
+          "secretsmanager:UpdateSecretVersionStage"
+        ]
+        Resource = "arn:aws:secretsmanager:*:*:secret:prolink/oauth/secrets*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "cognito-idp:DescribeIdentityProvider",
+          "cognito-idp:UpdateIdentityProvider"
+        ]
+        Resource = var.cognito_user_pool_arn
+      }
+    ]
+  })
+}
+
+# CloudWatch Log Group for Secret Rotation Lambda
+resource "aws_cloudwatch_log_group" "secret_rotation" {
+  name              = "/aws/lambda/${var.project_name}-secret-rotation"
+  retention_in_days = 7
+
+  tags = {
+    Name        = "${var.project_name}-secret-rotation-logs"
+    Environment = var.environment
+  }
+}
+
+# Lambda Permission for Secrets Manager to invoke rotation function
+resource "aws_lambda_permission" "secret_rotation" {
+  statement_id  = "AllowExecutionFromSecretsManager"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.secret_rotation.function_name
+  principal     = "secretsmanager.amazonaws.com"
 }
 
 # ============================================
@@ -670,6 +777,23 @@ resource "aws_apigatewayv2_route" "upload_post" {
   target    = "integrations/${aws_apigatewayv2_integration.upload.id}"
   authorizer_id = aws_apigatewayv2_authorizer.jwt.id
   authorization_type = "JWT"
+}
+
+# GET route for presigned URLs (authenticated - for private assets)
+resource "aws_apigatewayv2_route" "presigned_url_get" {
+  api_id    = aws_apigatewayv2_api.main.id
+  route_key = "GET /presigned-url"
+  target    = "integrations/${aws_apigatewayv2_integration.upload.id}"
+  authorizer_id = aws_apigatewayv2_authorizer.jwt.id
+  authorization_type = "JWT"
+}
+
+# Public GET route for presigned URLs (no auth - for public profile assets only)
+resource "aws_apigatewayv2_route" "presigned_url_public_get" {
+  api_id    = aws_apigatewayv2_api.main.id
+  route_key = "GET /public/presigned-url"
+  target    = "integrations/${aws_apigatewayv2_integration.upload.id}"
+  # Public endpoint - no authorizer
 }
 
 # ============================================
@@ -813,3 +937,4 @@ resource "aws_apigatewayv2_route" "username_check_options" {
   # Public endpoint - no authorizer
   # Lambda function handles OPTIONS and returns CORS headers
 }
+

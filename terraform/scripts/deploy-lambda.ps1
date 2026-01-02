@@ -1,5 +1,5 @@
 # Deploy Lambda functions
-$functions = @("profiles", "links", "upload", "post-confirmation")
+$functions = @("profiles", "links", "upload", "post-confirmation", "secret-rotation")
 
 # Get script directory and resolve paths relative to it
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
