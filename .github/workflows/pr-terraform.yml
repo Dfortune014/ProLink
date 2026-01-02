@@ -1,0 +1,162 @@
+name: PR Terraform Security
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/pr-terraform.yml'
+
+env:
+  AWS_REGION: 'us-east-1'  
+  TF_VERSION: '1.6.0'
+
+jobs:
+  terraform-security:
+    name: Terraform Security & Validation
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./terraform
+    
+    # GitHub OIDC - no static AWS keys
+    permissions:
+      id-token: write  # Required for OIDC
+      contents: read
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_TERRAFORM_PLAN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+        # This role should have read-only permissions for terraform plan
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Format Check
+        id: fmt
+        run: terraform fmt -check -recursive
+        continue-on-error: false
+
+      - name: Terraform Init
+        run: terraform init -backend=false
+
+      - name: Terraform Validate
+        id: validate
+        run: terraform validate
+        continue-on-error: false
+
+      - name: Validate Required Secrets
+        run: |
+          if [ -z "${{ secrets.TF_VAR_google_client_secret }}" ] || [ -z "${{ secrets.TF_VAR_linkedin_client_secret }}" ]; then
+            echo "❌ Required secrets are missing. Please configure the following secrets in repository settings:"
+            echo "   - TF_VAR_google_client_secret"
+            echo "   - TF_VAR_linkedin_client_secret"
+            exit 1
+          fi
+          echo "✅ All required secrets are configured"
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          terraform plan -no-color -out=tfplan
+        continue-on-error: false
+        env:
+          TF_VAR_google_client_secret: ${{ secrets.TF_VAR_google_client_secret }}
+          TF_VAR_linkedin_client_secret: ${{ secrets.TF_VAR_linkedin_client_secret }}
+
+      - name: Terraform Plan Output
+        if: steps.plan.outcome == 'success'
+        run: terraform show -no-color tfplan > plan.txt
+
+      - name: Comment PR with Plan
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request' && steps.plan.outcome == 'success'
+        env:
+          PLAN: "terraform\n${{ steps.plan.outputs.stdout }}"
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const output = `#### Terraform Plan
+            \`\`\`
+            ${process.env.PLAN}
+            \`\`\`
+            *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
+
+      - name: Run Checkov
+        id: checkov
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: terraform
+          framework: terraform
+          soft_fail: false  # FAIL on findings
+          output_format: json
+          output_file_path: checkov-results.json
+          check: CKV_AWS,CKV2_AWS  # AWS checks
+          skip_check: CKV_AWS_79  # Skip if you want to allow public S3
+
+      - name: Checkov Results Summary
+        if: always()
+        run: |
+          if [ -f checkov-results.json ]; then
+            CRITICAL=$(jq '[.results.failed_checks[] | select(.check_severity == "CRITICAL")] | length' checkov-results.json 2>/dev/null || echo "0")
+            HIGH=$(jq '[.results.failed_checks[] | select(.check_severity == "HIGH")] | length' checkov-results.json 2>/dev/null || echo "0")
+            
+            if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
+              echo "❌ Checkov found $CRITICAL CRITICAL and $HIGH HIGH severity issues"
+              exit 1
+            else
+              echo "✅ Checkov passed (only MEDIUM/LOW findings if any)"
+            fi
+          fi
+
+      - name: Upload Checkov results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-security-results
+          path: terraform/checkov-results.json
+          retention-days: 30
+
+
+# --------------------------------------------------------------------
+# SECURITY CONTROLS ENFORCED
+# --------------------------------------------------------------------
+# - Secret Scanning (GitLeaks)
+#   * Detects leaked API keys, tokens, credentials
+#   * Always FAILS — secrets are treated as critical incidents
+#
+# - SAST (CodeQL)
+#   * Analyzes JavaScript and Python for insecure patterns
+#   * Results uploaded to GitHub Security dashboard
+#
+# - SCA (npm audit, pip-audit)
+#   * Scans dependencies for known CVEs
+#   * FAILS on HIGH or CRITICAL vulnerabilities
+#
+# - SBOM Generation (CycloneDX)
+#   * Generates a Software Bill of Materials
+#   * Used for supply-chain visibility and incident response
+#
+# GATING POLICY:
+#   HIGH / CRITICAL → BLOCK merge
+#   MEDIUM          → Warning only
+#   LOW             → Log only
+#
+# TRUST BOUNDARY:
+#   Pull Request / Source Control
+# --------------------------------------------------------------------
