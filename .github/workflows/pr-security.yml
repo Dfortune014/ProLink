@@ -166,7 +166,7 @@ jobs:
           project-name: 'ProLynk Frontend'
           project-version: '1.0.0'
           build-tools: 'npm'
-          build-command: 'npm ci'
+          build-command: 'npm install'
           working-directory: './frontend'
           output-format: 'json'
           output-file: 'frontend-sbom.json'
