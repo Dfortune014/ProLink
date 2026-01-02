@@ -4,6 +4,10 @@ on:
   pull_request:
     branches: [main, develop]
 
+permissions:
+  contents: read
+  pull-requests: read
+
 env:
   NODE_VERSION: '18'
   PYTHON_VERSION: '3.11'
@@ -24,6 +28,10 @@ jobs:
 
       - name: Run GitLeaks
         uses: gitleaks/gitleaks-action@v2
+        with:
+          no-git: false
+          path: .
+          verbose: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         # No continue-on-error - secrets are always critical
