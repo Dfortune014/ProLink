@@ -20,6 +20,16 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Checkout frontend repository
+        uses: actions/checkout@v4
+        with:
+          repository: Fortune-devop/carousel-clone-b9158d68
+          path: frontend
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
