@@ -70,8 +70,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-        # cache-dependency-path auto-detects from working-directory
+        # Cache disabled - package-lock.json not in main repo (frontend is nested repo)
 
       - name: Install dependencies
         run: npm ci
