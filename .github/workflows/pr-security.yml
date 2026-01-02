@@ -75,7 +75,20 @@ jobs:
 
       - run: |
           pip install pip-audit
-          pip-audit -r terraform/modules/lambda/**/requirements.txt
+          
+          # Find all requirements.txt files and audit each one
+          FAILED=0
+          for req_file in $(find terraform/modules/lambda -name "requirements.txt" -type f); do
+            echo "Scanning $req_file"
+            pip-audit -r "$req_file" || FAILED=1
+          done
+          
+          if [ "$FAILED" -eq 1 ]; then
+            echo "❌ High/Critical vulnerabilities found. Failing build."
+            exit 1
+          fi
+          
+          echo "✅ No high/critical vulnerabilities found"
 
 
 
