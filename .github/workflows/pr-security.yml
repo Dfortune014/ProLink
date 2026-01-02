@@ -26,16 +26,19 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Debug - Check GITHUB_TOKEN
+      - name: Debug - Check GITLEAKS_GITHUB_TOKEN
         run: |
-          if [ -z "$GITHUB_TOKEN" ]; then
-            echo "❌ GITHUB_TOKEN is not set"
+          if [ -z "${{ secrets.GITLEAKS_GITHUB_TOKEN }}" ]; then
+            echo "❌ GITLEAKS_GITHUB_TOKEN is not set"
             exit 1
           else
-            echo "✅ GITHUB_TOKEN is set"
-            echo "Token length: ${#GITHUB_TOKEN}"
-            echo "Token prefix: ${GITHUB_TOKEN:0:10}..."
+            echo "✅ GITLEAKS_GITHUB_TOKEN is set"
+            TOKEN_LENGTH=${#GITLEAKS_GITHUB_TOKEN}
+            echo "Token length: $TOKEN_LENGTH"
+            echo "Token prefix: ${GITLEAKS_GITHUB_TOKEN:0:10}..."
           fi
+        env:
+          GITLEAKS_GITHUB_TOKEN: ${{ secrets.GITLEAKS_GITHUB_TOKEN }}
 
       - name: Run GitLeaks
         uses: gitleaks/gitleaks-action@v2
@@ -43,7 +46,8 @@ jobs:
           no-git: false
           path: .
           verbose: true
-        # GITHUB_TOKEN is automatically available, no need to set it explicitly
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITLEAKS_GITHUB_TOKEN }}
         # No continue-on-error - secrets are always critical
 
   # Trust Boundary 1: SAST - CodeQL
