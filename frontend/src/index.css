@@ -1,0 +1,123 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    --background: 240 8% 97%;
+    --foreground: 240 6% 6%;
+
+    --card: 240 8% 97%;
+    --card-foreground: 240 6% 6%;
+
+    --popover: 240 8% 97%;
+    --popover-foreground: 240 6% 6%;
+
+    --primary: 244 100% 69%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 217 91% 30%; /* Navy blue */
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 240 4% 90%;
+    --muted-foreground: 240 6% 40%;
+
+    --accent: 258 92% 76%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 160 84% 39%;
+    --success-foreground: 0 0% 100%;
+
+    --border: 240 4% 85%;
+    --input: 240 4% 90%;
+    --ring: 244 100% 69%;
+
+    --radius: 0.75rem;
+    
+    --gradient-purple: radial-gradient(ellipse at top right, hsl(244, 100%, 69%, 0.2), transparent 50%);
+
+    --sidebar-background: 240 8% 97%;
+
+    --sidebar-foreground: 240 6% 6%;
+
+    --sidebar-primary: 244 100% 69%;
+
+    --sidebar-primary-foreground: 0 0% 100%;
+
+    --sidebar-accent: 240 4% 90%;
+
+    --sidebar-accent-foreground: 240 6% 6%;
+
+    --sidebar-border: 240 4% 85%;
+
+    --sidebar-ring: 244 100% 69%;
+  }
+
+  .dark {
+    --background: 240 6% 6%;
+    --foreground: 0 0% 100%;
+
+    --card: 240 6% 8%;
+    --card-foreground: 0 0% 100%;
+
+    --popover: 240 6% 8%;
+    --popover-foreground: 0 0% 100%;
+
+    --primary: 244 100% 69%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 217 91% 30%; /* Navy blue */
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 240 4% 15%;
+    --muted-foreground: 0 0% 60%;
+
+    --accent: 258 92% 76%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 160 84% 39%;
+    --success-foreground: 0 0% 100%;
+
+    --border: 240 4% 15%;
+    --input: 240 4% 15%;
+    --ring: 244 100% 69%;
+    --sidebar-background: 240 6% 8%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 244 100% 69%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 4% 15%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 240 4% 15%;
+    --sidebar-ring: 244 100% 69%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: "Inter", system-ui, -apple-system, sans-serif;
+  }
+}
+
+@keyframes tilt {
+  0%, 100% {
+    transform: rotate(-3deg) scale(1.4);
+  }
+  50% {
+    transform: rotate(3deg) scale(1.4);
+  }
+}

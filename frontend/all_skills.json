@@ -1,0 +1,286 @@
+{
+    "skills": {
+      "technology": [
+        "Cloud Computing",
+        "AWS",
+        "Azure",
+        "Google Cloud",
+        "Linux",
+        "APIs",
+        "CI/CD",
+        "Kubernetes",
+        "Docker",
+        "Terraform",
+        "Networking",
+        "Cybersecurity",
+        "Frontend Development",
+        "Backend Development",
+        "Databases",
+        "SQL",
+        "NoSQL",
+        "Machine Learning",
+        "AI Model Deployment",
+        "DevOps",
+        "Scripting (Python, Bash)"
+      ],
+  
+      "healthcare": [
+        "Electronic Health Records (EHR)",
+        "Telemedicine",
+        "AI-Assisted Diagnostics",
+        "Specialized Patient Care",
+        "Emergency Medicine",
+        "Trauma Care",
+        "Orthopedic Care",
+        "Mental Health Support",
+        "PTSD Support",
+        "Cultural Competence",
+        "Empathy",
+        "Adaptability",
+        "Leadership",
+        "Health Education",
+        "Data Analysis",
+        "Quality Improvement",
+        "Resilience",
+        "Stress Management",
+        "Continuous Learning",
+        "Patient Communication",
+        "Care Coordination"
+      ],
+  
+      "healthcare_soft_skills": [
+        "Compassion",
+        "Active Listening",
+        "Teamwork",
+        "Work Ethic",
+        "Time Management",
+        "Flexibility",
+        "Professionalism",
+        "Emotional Intelligence"
+      ],
+  
+      "retail": [
+        "Customer Service",
+        "Cash Handling",
+        "POS Operation",
+        "Inventory Management",
+        "Visual Merchandising",
+        "Product Knowledge",
+        "Retail Sales Techniques",
+        "Loss Prevention",
+        "Basic Math",
+        "Digital POS Systems",
+        "E-commerce Tools",
+        "Social Media Marketing",
+        "CRM Tools",
+        "Store Operations",
+        "Stock Management",
+        "Store Display Design"
+      ],
+  
+      "retail_soft_skills": [
+        "Communication",
+        "Teamwork",
+        "Problem Solving",
+        "Patience",
+        "Adaptability",
+        "Conflict Resolution",
+        "Leadership",
+        "Decision Making"
+      ],
+  
+      "fashion_retail": [
+        "Fashion Trend Awareness",
+        "Garment Care Knowledge",
+        "Personal Styling",
+        "Color Coordination",
+        "Fashion Product Knowledge"
+      ],
+  
+      "electronics_retail": [
+        "Technical Product Knowledge",
+        "Troubleshooting",
+        "Software Installation",
+        "Device Setup Assistance"
+      ],
+  
+      "grocery_retail": [
+        "Food Safety",
+        "Nutrition Knowledge",
+        "Fresh Produce Management",
+        "Stock Rotation",
+        "Expiration Management"
+      ],
+  
+      "luxury_retail": [
+        "VIP Service",
+        "High-End Product Knowledge",
+        "Cultural Awareness",
+        "Luxury Storytelling",
+        "Upselling Premium Products"
+      ],
+  
+      "human_resources": [
+        "Recruiting",
+        "HRIS Systems",
+        "Applicant Tracking Systems",
+        "Payroll Processing",
+        "Labor Law Knowledge",
+        "Employment Law",
+        "Conflict Resolution",
+        "Employee Relations",
+        "Onboarding",
+        "Benefits Administration",
+        "Training & Development",
+        "Leadership",
+        "Project Management",
+        "Data Analysis",
+        "Performance Management",
+        "HR Compliance"
+      ],
+  
+      "marketing": [
+        "Marketing Strategy",
+        "Digital Marketing",
+        "Content Marketing",
+        "Social Media Marketing",
+        "SEO",
+        "SEM",
+        "Brand Management",
+        "Copywriting",
+        "Video Marketing",
+        "Email Marketing",
+        "Google Analytics",
+        "Google Ads",
+        "Product Marketing",
+        "Campaign Management",
+        "Creative Direction",
+        "Market Research"
+      ],
+  
+      "marketing_soft_skills": [
+        "Creativity",
+        "Communication",
+        "Collaboration",
+        "Time Management",
+        "Adaptability",
+        "Critical Thinking"
+      ],
+  
+      "sales": [
+        "Lead Generation",
+        "Sales Prospecting",
+        "B2B Sales",
+        "B2C Sales",
+        "Needs Qualification",
+        "Sales Presentations",
+        "Closing Techniques",
+        "CRM Management",
+        "Account Management",
+        "Outbound Sales",
+        "Inbound Sales",
+        "Cold Calling",
+        "Negotiation",
+        "Retail Sales",
+        "Salesforce CRM",
+        "HubSpot CRM"
+      ],
+  
+      "finance": [
+        "Financial Analysis",
+        "Financial Modeling",
+        "Accounting",
+        "Budgeting",
+        "Risk Management",
+        "Lending",
+        "Banking Operations",
+        "Cash Handling",
+        "Procurement",
+        "Forecasting",
+        "GAAP Knowledge",
+        "Tableau",
+        "SQL",
+        "Power BI",
+        "Excel Advanced Functions",
+        "Business Development",
+        "Audit Preparation",
+        "Tax Preparation"
+      ],
+  
+      "customer_service": [
+        "Customer Service",
+        "Conflict Resolution",
+        "Call Center Etiquette",
+        "Front Desk Operations",
+        "Hospitality",
+        "Problem Solving",
+        "Computer Literacy",
+        "Order Processing",
+        "Phone Handling",
+        "Email Support",
+        "Live Chat Support",
+        "CRM Ticketing Systems"
+      ],
+  
+      "administrative": [
+        "Microsoft Office",
+        "Data Entry",
+        "Typing",
+        "Calendar Management",
+        "Email Management",
+        "Front Desk Management",
+        "Office Management",
+        "Scheduling",
+        "Document Filing",
+        "Travel Arrangements",
+        "Meeting Coordination"
+      ],
+  
+      "education": [
+        "Classroom Management",
+        "Lesson Planning",
+        "Instructional Design",
+        "Curriculum Development",
+        "Special Education Knowledge",
+        "Tutoring",
+        "Child Development",
+        "Behavior Management",
+        "Bilingual Education"
+      ],
+  
+      "manufacturing": [
+        "Machine Operation",
+        "Robotics Operation",
+        "Forklift Operation",
+        "GMP Compliance",
+        "Continuous Improvement",
+        "Hand Tool Proficiency",
+        "Quality Assurance",
+        "Safety Standards Compliance",
+        "Industrial Machinery Use"
+      ],
+  
+      "hospitality": [
+        "Multitasking",
+        "Customer Service",
+        "Food Service",
+        "Bartending",
+        "Concierge Services",
+        "Housekeeping",
+        "Event Coordination",
+        "Reservations Management",
+        "Guest Relations",
+        "Workflow Management"
+      ],
+  
+      "hospitality_soft_skills": [
+        "Adaptability",
+        "Problem Solving",
+        "Time Management",
+        "Language Skills",
+        "Emotional Intelligence",
+        "Critical Thinking"
+      ]
+    }
+  }
+  
