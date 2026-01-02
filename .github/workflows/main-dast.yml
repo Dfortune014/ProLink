@@ -1,0 +1,75 @@
+name: DAST - Staging Security Scan
+
+on:
+  workflow_dispatch:  # Manual trigger only
+    inputs:
+      environment:
+        description: 'Environment to scan'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+  # Optionally: Auto-run on main branch pushes to staging
+  # push:
+  #   branches: [main]
+  #   paths:
+  #     - 'frontend/**'
+
+env:
+  ZAP_VERSION: 'stable'
+
+jobs:
+  dast-owasp-zap:
+    name: DAST - OWASP ZAP Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate Environment
+        run: |
+          if [ "${{ github.event.inputs.environment }}" != "staging" ]; then
+            echo "❌ DAST is only allowed against staging environment"
+            echo "Production scans must be manual and approved"
+            exit 1
+          fi
+
+      - name: Validate Required Secrets
+        run: |
+          if [ -z "${{ secrets.STAGING_URL }}" ]; then
+            echo "❌ Required secret STAGING_URL is missing."
+            echo "   Please configure STAGING_URL in repository settings."
+            exit 1
+          fi
+          echo "✅ Required secrets are configured"
+
+      - name: ZAP Baseline Scan (Staging Only)
+        uses: zaproxy/action-baseline@v0.10.0
+        with:
+          target: ${{ secrets.STAGING_URL }}
+          rules_file_name: '.zap/rules.tsv'
+          cmd_options: '-a'
+          fail_action: true  # FAIL on high/critical findings
+
+      - name: Upload ZAP results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-results
+          path: report_html.html
+          retention-days: 30
+
+      - name: ZAP Results Summary
+        if: always()
+        run: |
+          if [ -f zap-results.json ]; then
+            HIGH_COUNT=$(jq '[.site[] | .alerts[] | select(.riskcode == "3" or .riskcode == "4")] | length' zap-results.json 2>/dev/null || echo "0")
+            if [ "$HIGH_COUNT" -gt 0 ]; then
+              echo "❌ Found $HIGH_COUNT HIGH/CRITICAL security issues"
+              exit 1
+            fi
+          fi
+
+
