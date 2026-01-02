@@ -72,7 +72,7 @@ jobs:
       - name: Checkout frontend repository
         uses: actions/checkout@v4
         with:
-          repository: Dfortune014/LinkPro
+          repository: Dfortune014/ProLink
           path: frontend
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -176,7 +176,7 @@ jobs:
       - name: Checkout frontend repository
         uses: actions/checkout@v4
         with:
-          repository: Dfortune014/LinkPro
+          repository: Dfortune014/ProLink
           path: frontend
           token: ${{ secrets.GITHUB_TOKEN }}
 
