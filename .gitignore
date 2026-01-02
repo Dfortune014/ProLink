@@ -134,4 +134,4 @@ coverage/
 *.bak
 *.backup
 *.old
-*.orig
+*.orignode_modules/

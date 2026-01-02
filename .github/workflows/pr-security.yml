@@ -170,6 +170,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Debug directory structure
+        run: |
+          pwd
+          ls -la
+          ls -la frontend || echo "frontend directory not found"
+
       - name: Generate npm SBOM
         uses: cyclonedx/gh-action@v1
         with:
